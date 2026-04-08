@@ -436,18 +436,28 @@ async def analyze(request: Request):
             ).model_dump(),
         )
 
-    # --- Get zone ---
-    zone = zone_service.get_zone(zone_input)
-    if zone is None:
-        suggestions = zone_service.suggest_similar_zones(zone_input)
-        msg = f"La zona '{zone_input}' no fue encontrada"
-        if suggestions:
-            msg += f". ¿Quisiste decir: {', '.join(suggestions)}?"
+    # --- Get zone (Dinamizado) ---
+    zone = zone_service.get_dynamic_zone(zone_input, 19.4326, -99.1332) # Fallback coords
+    
+    # Intentar geolocalizar con Google para mayor precisión si no es una zona fija
+    try:
+        from app.clients.google_places_client import GooglePlacesClient
+        g_client = GooglePlacesClient()
+        g_coords = await g_client.get_geocode(zone_input)
+        if g_coords:
+            lat, lng = g_coords
+            zone = zone_service.get_dynamic_zone(zone_input, lat, lng, radius_km=radius_km)
+    except Exception as e:
+        logger.warning(f"Error geolocalizando con Google: {e}")
+
+    if not zone or not zone.ageb_ids:
         return JSONResponse(
             status_code=422,
             content=APIError(
                 error="zone_not_found",
-                message=msg,
+                message=f"No se encontraron datos demográficos para la zona '{zone_input}' en el radio de {radius_km}km. Prueba con una zona más céntrica en CDMX.",
+            ).model_dump(),
+        )
             ).model_dump(),
         )
 
