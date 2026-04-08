@@ -35,9 +35,10 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
-GROQ_TIMEOUT = 10.0
-GROQ_MAX_RETRIES = 1
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL_FAST = "llama-3.1-8b-instant"  # Faster model with higher rate limits for classification
+GROQ_TIMEOUT = 30.0
+GROQ_MAX_RETRIES = 4
 
 
 import asyncio
@@ -52,16 +53,8 @@ class LLMService:
         else:
             logger.error("GROQ_API_KEY NO DETECTADA en el entorno")
 
-    async def _call_groq(self, messages: list[dict[str, str]], temperature: float = 0.3) -> str | None:
-        """Realiza una llamada a la API de Groq con reintentos y manejo de 429.
-
-        Args:
-            messages: Lista de mensajes para el chat completion.
-            temperature: Temperatura de generación.
-
-        Returns:
-            Texto de respuesta o None si falla.
-        """
+    async def _call_groq(self, messages: list[dict[str, str]], temperature: float = 0.3, model: str | None = None) -> str | None:
+        """Realiza una llamada a la API de Groq con reintentos y manejo de 429."""
         if not self.api_key:
             logger.warning("GROQ_API_KEY no configurada")
             return None
@@ -71,10 +64,10 @@ class LLMService:
             "Content-Type": "application/json",
         }
         payload = {
-            "model": GROQ_MODEL,
+            "model": model or GROQ_MODEL,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 2048,
+            "max_tokens": 4096,
         }
 
         for attempt in range(GROQ_MAX_RETRIES + 1):
@@ -87,7 +80,7 @@ class LLMService:
                     )
                     
                     if response.status_code == 429:
-                        wait_time = (attempt + 1) * 2
+                        wait_time = (attempt + 1) * 2 + 1
                         logger.warning("Groq Rate Limit (429). Esperando %d segundos...", wait_time)
                         await asyncio.sleep(wait_time)
                         continue
@@ -168,7 +161,7 @@ class LLMService:
             {"role": "user", "content": prompt},
         ]
 
-        response_text = await self._call_groq(messages)
+        response_text = await self._call_groq(messages, model=GROQ_MODEL_FAST)
         if response_text:
             parsed = self._parse_json_response(response_text)
             if parsed:
@@ -234,107 +227,74 @@ class LLMService:
         businesses: list[Business],
         user_filters: dict | None = None,
     ) -> list[ClassifiedBusiness]:
-        """Clasifica negocios como complementarios o competidores usando LLM o fallback.
-
-        Args:
-            user_business: Interpretación del negocio del usuario.
-            businesses: Lista de negocios a clasificar.
-            user_filters: Filtros opcionales del usuario con claves
-                ``ally_filters`` y ``competitor_filters``.
-
-        Returns:
-            Lista de ClassifiedBusiness con clasificación y relevancia.
-        """
         if not businesses:
             return []
 
-        # Build business list for prompt (limit to avoid token overflow)
-        biz_list = []
+        # Build compact business list
+        biz_lines = []
         for b in businesses:
-            biz_list.append({
-                "id": b.id,
-                "name": b.name,
-                "category": b.category,
-                "scian_code": b.denue_scian_code or "",
-            })
+            biz_lines.append(f"{b.id}|{b.name}|{b.category}")
+        biz_text = "\n".join(biz_lines)
 
         prompt = (
-            f"El usuario quiere abrir un negocio de tipo: {user_business.scian_description} "
-            f"(código SCIAN: {user_business.scian_code}).\n\n"
-            "A continuación hay una lista de negocios existentes en la zona. "
-            "Para cada uno, clasifícalo como:\n"
-            '- "complementary": genera sinergia con el negocio del usuario\n'
-            '- "competitor": compite directamente con el negocio del usuario\n'
-            '- "unclassified": no se puede determinar la relación\n\n'
-            "Y asigna un nivel de relevancia:\n"
-            '- "high": relación muy directa\n'
-            '- "medium": relación moderada\n'
-            '- "low": relación indirecta\n\n'
-            f"Negocios a clasificar:\n{json.dumps(biz_list, ensure_ascii=False)}\n\n"
+            f"El usuario quiere abrir: {user_business.scian_description}\n\n"
         )
 
-        # Inject user filter context when filters are provided
+        # User filters are CRITICAL — put them prominently BEFORE the classification instructions
         if user_filters:
             ally = user_filters.get("ally_filters", [])
             comp = user_filters.get("competitor_filters", [])
             if ally or comp:
-                prompt += "Además, el usuario ha indicado las siguientes preferencias:\n"
-                if ally:
-                    prompt += f"- Considera como ALIADOS (complementarios): {', '.join(ally)}\n"
+                prompt += "⚠️ REGLAS OBLIGATORIAS DEL USUARIO:\n"
                 if comp:
-                    prompt += f"- Considera como COMPETIDORES: {', '.join(comp)}\n"
-                prompt += "Prioriza estas preferencias del usuario en tu clasificación.\n\n"
+                    prompt += f"- Negocios tipo [{', '.join(comp)}] son SIEMPRE competidores (X)\n"
+                if ally:
+                    prompt += f"- Negocios tipo [{', '.join(ally)}] son SIEMPRE complementarios (C)\n"
+                prompt += "Estas reglas tienen PRIORIDAD ABSOLUTA sobre tu criterio.\n\n"
 
         prompt += (
-            "Responde ÚNICAMENTE con un JSON válido con esta estructura:\n"
-            "{\n"
-            '  "classifications": [\n'
-            '    {"id": "id_negocio", "classification": "complementary|competitor|unclassified", "relevance": "high|medium|low"},\n'
-            "    ...\n"
-            "  ]\n"
-            "}\n"
-            "No incluyas texto adicional fuera del JSON."
+            "Clasifica cada negocio:\n"
+            "C = complementario (genera sinergia)\n"
+            "X = competidor (mismo tipo de negocio o similar)\n"
+            "U = sin relación (SOLO si no hay ninguna conexión)\n"
+            "Relevancia: H=alta, M=media, L=baja\n\n"
+            f"Negocios (id|nombre|categoría):\n{biz_text}\n\n"
+            f'Responde SOLO JSON: {{"r":[{{"i":"id","c":"C|X|U","r":"H|M|L"}},...]}}'
         )
 
         messages = [
-            {"role": "system", "content": "Eres un experto en análisis de ecosistemas comerciales en México. Clasifica negocios según su relación con el negocio del usuario. Responde en JSON."},
+            {"role": "system", "content": "Clasifica negocios comerciales. RESPETA las reglas del usuario. Responde SOLO JSON."},
             {"role": "user", "content": prompt},
         ]
 
-        response_text = await self._call_groq(messages)
+        response_text = await self._call_groq(messages, model=GROQ_MODEL_FAST)
         if response_text:
             parsed = self._parse_json_response(response_text)
-            if parsed and "classifications" in parsed:
+            if parsed and "r" in parsed:
                 try:
-                    classification_map: dict[str, dict[str, str]] = {}
-                    for c in parsed["classifications"]:
-                        classification_map[c["id"]] = {
-                            "classification": c.get("classification", "unclassified"),
-                            "relevance": c.get("relevance", "low"),
+                    cls_map = {"C": "complementary", "X": "competitor", "U": "unclassified",
+                               "complementary": "complementary", "competitor": "competitor", "unclassified": "unclassified"}
+                    rel_map = {"H": "high", "M": "medium", "L": "low",
+                               "high": "high", "medium": "medium", "low": "low"}
+
+                    classification_map = {}
+                    for item in parsed["r"]:
+                        cid = item.get("i", "")
+                        classification_map[cid] = {
+                            "classification": cls_map.get(item.get("c", "U"), "unclassified"),
+                            "relevance": rel_map.get(item.get("r", "L"), "low"),
                         }
 
                     result = []
                     for b in businesses:
                         info = classification_map.get(b.id, {})
-                        classification = info.get("classification", "unclassified")
-                        relevance = info.get("relevance", "low")
-                        # Validate values
-                        if classification not in ("complementary", "competitor", "unclassified"):
-                            classification = "unclassified"
-                        if relevance not in ("high", "medium", "low"):
-                            relevance = "low"
-                        result.append(
-                            ClassifiedBusiness(
-                                **b.model_dump(),
-                                classification=classification,
-                                relevance=relevance,
-                            )
-                        )
+                        cls = info.get("classification", "unclassified")
+                        rel = info.get("relevance", "low")
+                        result.append(ClassifiedBusiness(**b.model_dump(), classification=cls, relevance=rel))
                     return result
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning("Error parseando clasificación LLM: %s", e)
 
-        # Fallback: reglas estáticas basadas en códigos SCIAN
         return self._fallback_classify_businesses(user_business, businesses, user_filters)
 
     def _fallback_classify_businesses(

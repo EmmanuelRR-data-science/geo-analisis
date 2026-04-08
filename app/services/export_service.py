@@ -18,36 +18,62 @@ _F = "Helvetica"
 
 
 def _setup_pdf_font(pdf) -> str:
-    """Register Arial Unicode font if available, return font family name."""
+    """Register a Unicode TTF font if available, return font family name."""
     global _F
     import os as _os
-    _winfonts = _os.path.join(_os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
-    _arial = _os.path.join(_winfonts, "arial.ttf")
-    if _os.path.exists(_arial):
-        pdf.add_font("Uni", "", fname=_arial)
-        pdf.add_font("Uni", "B", fname=_os.path.join(_winfonts, "arialbd.ttf"))
-        pdf.add_font("Uni", "I", fname=_os.path.join(_winfonts, "ariali.ttf"))
-        pdf.add_font("Uni", "BI", fname=_os.path.join(_winfonts, "arialbi.ttf"))
-        _F = "Uni"
-    else:
-        _F = "Helvetica"
+
+    # Try common font paths (Windows, Linux/Docker)
+    font_candidates = [
+        # Windows
+        (_os.path.join(_os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arial.ttf"),
+         _os.path.join(_os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arialbd.ttf"),
+         _os.path.join(_os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "ariali.ttf"),
+         _os.path.join(_os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "arialbi.ttf")),
+        # Linux (DejaVu from fonts-dejavu-core package)
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"),
+        # Liberation Sans (from fonts-liberation package)
+        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"),
+    ]
+
+    for regular, bold, italic, bold_italic in font_candidates:
+        if _os.path.exists(regular):
+            try:
+                pdf.add_font("Uni", "", fname=regular)
+                pdf.add_font("Uni", "B", fname=bold)
+                pdf.add_font("Uni", "I", fname=italic)
+                pdf.add_font("Uni", "BI", fname=bold_italic)
+                _F = "Uni"
+                return _F
+            except Exception:
+                continue
+
+    _F = "Helvetica"
     return _F
 
 
 def _clean_text(text: str) -> str:
-    """Clean text for FPDF to avoid Unicode errors with standard fonts."""
+    """Clean text for FPDF. When using Unicode font, keep accents. When using Helvetica, strip them."""
     if not text:
         return ""
-    # Map common unicode characters to latin-1 equivalents
+    # Map smart quotes and special chars
     mapping = {
-        "\u201c": '"', "\u201d": '"',  # Smart quotes
-        "\u2018": "'", "\u2019": "'",  # Smart apostrophes
-        "\u2013": "-", "\u2014": "-",  # Dashes
-        "\u2026": "...",               # Ellipsis
+        "\u201c": '"', "\u201d": '"',
+        "\u2018": "'", "\u2019": "'",
+        "\u2013": "-", "\u2014": "-",
+        "\u2026": "...",
     }
     for k, v in mapping.items():
         text = text.replace(k, v)
-    # Remove other problematic unicode
+    # If using Unicode font, keep accents
+    if _F == "Uni":
+        return text
+    # Fallback: strip to latin-1
     return text.encode("latin-1", "replace").decode("latin-1")
 
 

@@ -1,5 +1,13 @@
 /* ===== Map module (Leaflet) ===== */
 
+/* Utility: escape HTML to prevent XSS in popups */
+function escapeHtml(text) {
+  if (text == null) return '';
+  var d = document.createElement('div');
+  d.textContent = String(text);
+  return d.innerHTML;
+}
+
 function initMap() {
   var map = L.map('map', { center: [19.4326, -99.1332], zoom: 12, zoomControl: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -43,9 +51,10 @@ function renderBusinesses(businesses, zone) {
     if (!biz.lat || !biz.lng) return;
     var color = biz.classification === 'complementary' ? '#22c55e' : '#ef4444';
     var marker = L.circleMarker([biz.lat, biz.lng], {
-      radius: 8, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
+      radius: 10, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85,
     });
-    marker.bindPopup(buildPopupHtml(biz), { maxWidth: 320 });
+    var popupContent = buildPopupHtml(biz);
+    marker.bindPopup(popupContent, { maxWidth: 320, closeButton: true });
     // Store distance from center on the marker for ring filtering
     marker._distKm = haversineKm(cLat, cLng, biz.lat, biz.lng);
     marker.addTo(map);

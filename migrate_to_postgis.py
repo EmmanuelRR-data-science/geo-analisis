@@ -1,103 +1,109 @@
+"""Migration script: load ageb_data.csv into PostgreSQL."""
+
+import sys
 import pandas as pd
-import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.models.db_models import Base, AGEBDemographics
-from geoalchemy2.elements import WKTElement
+from sqlalchemy import text
+from app.db import get_engine
+from app.models.db_models import Base
 
-# Configuración HARDCODED para Docker
-DB_USER = "admin"
-DB_PASS = "admin_password_safe"
-DB_NAME = "geoanalisis"
-DB_HOST = "geo-db"
 
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
+# Columns that should be stored as Float
+FLOAT_COLUMNS = {"graproes", "prom_ocup"}
 
-def clean_value(val):
-    if val in ['*', 'N/D', '', None]:
-        return 0
+# All demographic columns in the model
+DEMOGRAPHIC_COLUMNS = [
+    "pobtot", "pobfem", "pobmas", "p_12ymas", "p_15ymas", "p_18ymas",
+    "p_60ymas", "pob0_14", "pob15_64", "pob65_mas", "graproes", "pea",
+    "pe_inac", "pocupada", "pdesocup", "psinder", "pder_ss", "tothog",
+    "pobhog", "vivtot", "vivpar_hab", "ocupvivpar", "prom_ocup",
+    "vph_c_elec", "vph_aguadv", "vph_drenaj", "vph_refri", "vph_lavad",
+    "vph_autom", "vph_pc", "vph_cel", "vph_inter",
+]
+
+
+def clean_value(val, as_float=False):
+    """Clean non-numeric values from CSV data."""
+    if val is None or str(val).strip() in ("*", "N/D", ""):
+        return None if as_float else 0
     try:
-        return float(val)
-    except:
-        return 0
+        return float(val) if as_float else int(float(val))
+    except (ValueError, TypeError):
+        return None if as_float else 0
+
+
+def build_ageb_id(entidad, mun, loc, ageb):
+    """Generate padded AGEB composite key."""
+    return (
+        str(entidad).zfill(2)
+        + str(mun).zfill(3)
+        + str(loc).zfill(4)
+        + str(ageb).zfill(4)
+    )
+
 
 def migrate():
-    print(f"🚀 Iniciando migración a {DB_HOST}...")
-    engine = create_engine(DATABASE_URL)
-    Base.metadata.drop_all(engine) # Limpiar para asegurar datos frescos
+    csv_path = "ageb_data.csv"
+    print(f"📖 Loading {csv_path}...")
+
+    try:
+        df = pd.read_csv(csv_path, dtype=str)
+    except FileNotFoundError:
+        print(f"❌ File not found: {csv_path}")
+        sys.exit(1)
+
+    print(f"📊 Total rows in CSV: {len(df)}")
+
+    try:
+        engine = get_engine()
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        sys.exit(1)
+
+    # Create tables (without drop)
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
 
-    file_path = "RESAGEBURB_09XLSX20.xlsx"
-    print(f"📖 Cargando {file_path}...")
-    
-    # Leer columnas necesarias
-    cols = ['ENTIDAD', 'MUN', 'LOC', 'AGEB', 'MZA', 'POBTOT', 'PEA', 'GRAPROES', 
-            'VPH_INTER', 'VPH_AUTOM', 'VPH_PC', 'POBFEM', 'POBMAS', 'POB0_14', 
-            'POB15_64', 'POB65_MAS', 'POCUPADA', 'PDESOCUP', 'PE_INAC', 
-            'TOTHOG', 'VIVTOT', 'VIVPAR_HAB', 'PDER_SS', 'PSINDER']
-    
-    df = pd.read_excel(file_path, usecols=cols)
+    # Build upsert SQL
+    col_names = ["id", "entidad", "municipio", "localidad", "ageb_id", "mza"] + DEMOGRAPHIC_COLUMNS
+    placeholders = ", ".join(f":{c}" for c in col_names)
+    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in col_names if c != "id")
 
-    # FILTRO CRÍTICO: MZA == 0 (Total de AGEB), pero excluyendo totales de MUN/LOC
-    # En INEGI, los totales de AGEB tienen MZA=0 y AGEB != '0000' (o 0)
-    df_ageb = df[
-        (df['MZA'].astype(int) == 0) & 
-        (df['AGEB'].astype(str) != '0000') & 
-        (df['AGEB'].astype(str) != '0')
-    ].copy()
+    upsert_sql = text(
+        f"INSERT INTO ageb_demographics ({', '.join(col_names)}) "
+        f"VALUES ({placeholders}) "
+        f"ON CONFLICT (id) DO UPDATE SET {update_set}"
+    )
 
-    print(f"📊 Registros de AGEB detectados: {len(df_ageb)}")
+    count = 0
+    with engine.begin() as conn:
+        for _, row in df.iterrows():
+            ent = str(row.get("ENTIDAD", "")).strip()
+            mun = str(row.get("MUN", "")).strip()
+            loc = str(row.get("LOC", "")).strip()
+            ageb = str(row.get("AGEB", "")).strip()
+            mza = str(row.get("MZA", "")).strip().zfill(3) if row.get("MZA") else "000"
 
-    records = []
-    for _, row in df_ageb.iterrows():
-        ent = str(row['ENTIDAD']).zfill(2)
-        mun = str(row['MUN']).zfill(3)
-        loc = str(row['LOC']).zfill(4)
-        ageb = str(row['AGEB']).zfill(4)
-        full_id = f"{ent}{mun}{loc}{ageb}"
+            ageb_id_val = build_ageb_id(ent, mun, loc, ageb)
 
-        # Geometría simulada (Centro de CDMX con offset por municipio/ageb)
-        lat = 19.4326 + (int(mun) * 0.002) 
-        lng = -99.1332 + (len(ageb) * 0.0001)
-        point = WKTElement(f'POINT({lng} {lat})', srid=4326)
+            params = {
+                "id": ageb_id_val,
+                "entidad": ent.zfill(2),
+                "municipio": mun.zfill(3),
+                "localidad": loc.zfill(4),
+                "ageb_id": ageb.zfill(4),
+                "mza": mza,
+            }
 
-        ageb_record = AGEBDemographics(
-            id=full_id,
-            entidad=ent,
-            municipio=mun,
-            localidad=loc,
-            ageb_id=ageb,
-            total_population=int(clean_value(row['POBTOT'])),
-            economically_active_population=int(clean_value(row['PEA'])),
-            socioeconomic_level="Calculado",
-            indicators={
-                "avg_schooling": clean_value(row['GRAPROES']),
-                "pct_internet": clean_value(row['VPH_INTER']),
-                "pct_car": clean_value(row['VPH_AUTOM']),
-                "pct_pc": clean_value(row['VPH_PC']),
-                "pobfem": int(clean_value(row['POBFEM'])),
-                "pobmas": int(clean_value(row['POBMAS'])),
-                "pob0_14": int(clean_value(row['POB0_14'])),
-                "pob15_64": int(clean_value(row['POB15_64'])),
-                "pob65_mas": int(clean_value(row['POB65_MAS'])),
-                "pocupada": int(clean_value(row['POCUPADA'])),
-                "pdesocup": int(clean_value(row['PDESOCUP'])),
-                "pe_inac": int(clean_value(row['PE_INAC'])),
-                "tothog": int(clean_value(row['TOTHOG'])),
-                "vivtot": int(clean_value(row['VIVTOT'])),
-                "vivpar_hab": int(clean_value(row['VIVPAR_HAB'])),
-                "pder_ss": int(clean_value(row['PDER_SS'])),
-                "psinder": int(clean_value(row['PSINDER']))
-            },
-            location=point
-        )
-        records.append(ageb_record)
+            for col in DEMOGRAPHIC_COLUMNS:
+                csv_col = col.upper()
+                raw = row.get(csv_col, None)
+                is_float = col in FLOAT_COLUMNS
+                params[col] = clean_value(raw, as_float=is_float)
 
-    session.bulk_save_objects(records)
-    session.commit()
-    print(f"✅ Migración COMPLETADA: {len(records)} AGEBs en PostGIS.")
+            conn.execute(upsert_sql, params)
+            count += 1
+
+    print(f"✅ Migration complete: {count} records inserted/updated.")
+
 
 if __name__ == "__main__":
     migrate()

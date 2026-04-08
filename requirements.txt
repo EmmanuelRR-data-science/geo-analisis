@@ -11,3 +11,6 @@ pytest
 pytest-asyncio
 fuzzywuzzy
 python-Levenshtein
+sqlalchemy
+psycopg2-binary
+geoalchemy2

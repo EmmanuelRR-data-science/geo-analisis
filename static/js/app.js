@@ -84,11 +84,7 @@ function renderWarnings(warnings) {
   dom.warningsArea.classList.remove('hidden');
 }
 
-function escapeHtml(text) {
-  var d = document.createElement('div');
-  d.textContent = text;
-  return d.innerHTML;
-}
+// escapeHtml is defined in map.js (loaded first)
 
 function formatNumber(n) {
   if (n == null) return '—';
