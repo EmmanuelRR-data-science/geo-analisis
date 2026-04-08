@@ -34,6 +34,23 @@ def _setup_pdf_font(pdf) -> str:
     return _F
 
 
+def _clean_text(text: str) -> str:
+    """Clean text for FPDF to avoid Unicode errors with standard fonts."""
+    if not text:
+        return ""
+    # Map common unicode characters to latin-1 equivalents
+    mapping = {
+        "\u201c": '"', "\u201d": '"',  # Smart quotes
+        "\u2018": "'", "\u2019": "'",  # Smart apostrophes
+        "\u2013": "-", "\u2014": "-",  # Dashes
+        "\u2026": "...",               # Ellipsis
+    }
+    for k, v in mapping.items():
+        text = text.replace(k, v)
+    # Remove other problematic unicode
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
 class ExportService:
     """Generates PDF and HTML reports from analysis results."""
 
@@ -45,10 +62,10 @@ class ExportService:
         ageb = result.ageb_data
         now = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
         score = round(result.viability.score)
-        category = result.viability.category
-        zone_name = result.zone.name
-        business_type = result.business_type.original_input
-        recommendation = result.recommendation_text or "Sin recomendación disponible."
+        category = _clean_text(result.viability.category)
+        zone_name = _clean_text(result.zone.name)
+        business_type = _clean_text(result.business_type.original_input)
+        recommendation = _clean_text(result.recommendation_text or "Sin recomendacion disponible.")
 
         competitors = sum(1 for b in result.businesses if b.classification == "competitor")
         complementary = sum(1 for b in result.businesses if b.classification == "complementary")

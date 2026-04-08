@@ -40,6 +40,8 @@ GROQ_TIMEOUT = 10.0
 GROQ_MAX_RETRIES = 1
 
 
+import asyncio
+
 class LLMService:
     """Servicio de comunicación con Groq API para análisis de negocios."""
 
@@ -47,7 +49,7 @@ class LLMService:
         self.api_key = os.getenv("GROQ_API_KEY", "")
 
     async def _call_groq(self, messages: list[dict[str, str]], temperature: float = 0.3) -> str | None:
-        """Realiza una llamada a la API de Groq con reintentos.
+        """Realiza una llamada a la API de Groq con reintentos y manejo de 429.
 
         Args:
             messages: Lista de mensajes para el chat completion.
@@ -79,6 +81,13 @@ class LLMService:
                         headers=headers,
                         json=payload,
                     )
+                    
+                    if response.status_code == 429:
+                        wait_time = (attempt + 1) * 2
+                        logger.warning("Groq Rate Limit (429). Esperando %d segundos...", wait_time)
+                        await asyncio.sleep(wait_time)
+                        continue
+                        
                     response.raise_for_status()
                     data = response.json()
                     return data["choices"][0]["message"]["content"]
@@ -86,6 +95,7 @@ class LLMService:
                 logger.warning("Groq API intento %d falló: %s", attempt + 1, e)
                 if attempt >= GROQ_MAX_RETRIES:
                     return None
+                await asyncio.sleep(1)
         return None
 
     def _parse_json_response(self, text: str) -> dict[str, Any] | None:

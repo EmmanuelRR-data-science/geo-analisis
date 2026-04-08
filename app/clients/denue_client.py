@@ -60,7 +60,8 @@ class DENUEClient:
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                # Force HTTP/1.1 for INEGI API (resolves RemoteProtocolError on VPS)
+                async with httpx.AsyncClient(timeout=_TIMEOUT, http2=False) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     data = resp.json()
