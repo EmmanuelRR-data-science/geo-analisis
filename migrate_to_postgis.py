@@ -1,21 +1,20 @@
 import pandas as pd
 import os
-import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models.db_models import Base, AGEBDemographics
 from geoalchemy2.elements import WKTElement
 
-# Configuración HARDCODED para asegurar conexión en Docker
+# Configuración HARDCODED para Docker
 DB_USER = "admin"
 DB_PASS = "admin_password_safe"
 DB_NAME = "geoanalisis"
-DB_HOST = "geo-db" # Nombre del servicio en docker-compose
+DB_HOST = "geo-db"
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
 def clean_value(val):
-    if val in ['*', 'N/D', '']:
+    if val in ['*', 'N/D', '', None]:
         return 0
     try:
         return float(val)
@@ -23,47 +22,45 @@ def clean_value(val):
         return 0
 
 def migrate():
-    print(f"🚀 FORZANDO conexión a: {DB_HOST}")
-    
-    try:
-        engine = create_engine(DATABASE_URL)
-        Base.metadata.create_all(engine)
-        print("✅ Conexión exitosa y tablas creadas.")
-    except Exception as e:
-        print(f"❌ Error crítico de conexión: {e}")
-        return
-
+    print(f"🚀 Iniciando migración a {DB_HOST}...")
+    engine = create_engine(DATABASE_URL)
+    Base.metadata.drop_all(engine) # Limpiar para asegurar datos frescos
+    Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
 
     file_path = "RESAGEBURB_09XLSX20.xlsx"
-    if not os.path.exists(file_path):
-        print(f"❌ Error: No se encuentra {file_path}")
-        return
-
-    print(f"📖 Leyendo {file_path}...")
-    cols = ['ENTIDAD', 'MUN', 'LOC', 'AGEB', 'MZA', 'POBTOT', 'PEA', 'GRAPROES', 'VPH_INTER', 'VPH_AUTOM', 'VPH_PC']
+    print(f"📖 Cargando {file_path}...")
+    
+    # Leer columnas necesarias
+    cols = ['ENTIDAD', 'MUN', 'LOC', 'AGEB', 'MZA', 'POBTOT', 'PEA', 'GRAPROES', 
+            'VPH_INTER', 'VPH_AUTOM', 'VPH_PC', 'POBFEM', 'POBMAS', 'POB0_14', 
+            'POB15_64', 'POB65_MAS', 'POCUPADA', 'PDESOCUP', 'PE_INAC', 
+            'TOTHOG', 'VIVTOT', 'VIVPAR_HAB', 'PDER_SS', 'PSINDER']
+    
     df = pd.read_excel(file_path, usecols=cols)
-    
-    # Limpieza de la columna MZA para asegurar que el filtro '000' funcione
-    df['MZA'] = df['MZA'].astype(str).str.strip().str.zfill(3)
-    df_ageb = df[df['MZA'] == '000'].copy()
-    
-    print(f"📊 Registros de AGEB encontrados para migrar: {len(df_ageb)}")
+
+    # FILTRO CRÍTICO: MZA == 0 (Total de AGEB), pero excluyendo totales de MUN/LOC
+    # En INEGI, los totales de AGEB tienen MZA=0 y AGEB != '0000' (o 0)
+    df_ageb = df[
+        (df['MZA'].astype(int) == 0) & 
+        (df['AGEB'].astype(str) != '0000') & 
+        (df['AGEB'].astype(str) != '0')
+    ].copy()
+
+    print(f"📊 Registros de AGEB detectados: {len(df_ageb)}")
 
     records = []
     for _, row in df_ageb.iterrows():
         ent = str(row['ENTIDAD']).zfill(2)
         mun = str(row['MUN']).zfill(3)
         loc = str(row['LOC']).zfill(4)
-        ageb = str(row['AGEB'])
+        ageb = str(row['AGEB']).zfill(4)
         full_id = f"{ent}{mun}{loc}{ageb}"
 
-        pobtot = int(clean_value(row['POBTOT']))
-        pea = int(clean_value(row['PEA']))
-        
-        lat = 19.4326 + (int(mun) * 0.001) 
-        lng = -99.1332 + (int(ageb[:3], 16) / 100000.0 if any(c.isdigit() for c in ageb) else 0)
+        # Geometría simulada (Centro de CDMX con offset por municipio/ageb)
+        lat = 19.4326 + (int(mun) * 0.002) 
+        lng = -99.1332 + (len(ageb) * 0.0001)
         point = WKTElement(f'POINT({lng} {lat})', srid=4326)
 
         ageb_record = AGEBDemographics(
@@ -72,14 +69,27 @@ def migrate():
             municipio=mun,
             localidad=loc,
             ageb_id=ageb,
-            total_population=pobtot,
-            economically_active_population=pea,
-            socioeconomic_level="Medio",
+            total_population=int(clean_value(row['POBTOT'])),
+            economically_active_population=int(clean_value(row['PEA'])),
+            socioeconomic_level="Calculado",
             indicators={
                 "avg_schooling": clean_value(row['GRAPROES']),
                 "pct_internet": clean_value(row['VPH_INTER']),
                 "pct_car": clean_value(row['VPH_AUTOM']),
-                "pct_pc": clean_value(row['VPH_PC'])
+                "pct_pc": clean_value(row['VPH_PC']),
+                "pobfem": int(clean_value(row['POBFEM'])),
+                "pobmas": int(clean_value(row['POBMAS'])),
+                "pob0_14": int(clean_value(row['POB0_14'])),
+                "pob15_64": int(clean_value(row['POB15_64'])),
+                "pob65_mas": int(clean_value(row['POB65_MAS'])),
+                "pocupada": int(clean_value(row['POCUPADA'])),
+                "pdesocup": int(clean_value(row['PDESOCUP'])),
+                "pe_inac": int(clean_value(row['PE_INAC'])),
+                "tothog": int(clean_value(row['TOTHOG'])),
+                "vivtot": int(clean_value(row['VIVTOT'])),
+                "vivpar_hab": int(clean_value(row['VIVPAR_HAB'])),
+                "pder_ss": int(clean_value(row['PDER_SS'])),
+                "psinder": int(clean_value(row['PSINDER']))
             },
             location=point
         )
@@ -87,7 +97,7 @@ def migrate():
 
     session.bulk_save_objects(records)
     session.commit()
-    print(f"✅ Migración exitosa: {len(records)} registros en PostGIS.")
+    print(f"✅ Migración COMPLETADA: {len(records)} AGEBs en PostGIS.")
 
 if __name__ == "__main__":
     migrate()
