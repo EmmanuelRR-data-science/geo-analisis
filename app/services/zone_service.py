@@ -1,60 +1,58 @@
 from __future__ import annotations
-import os
-import logging
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 from fuzzywuzzy import fuzz, process
 from app.models.schemas import BoundingBox, Zone
 
-logger = logging.getLogger(__name__)
+_ZONE_CATALOG: list[dict] = [
+    {
+        "name": "Del Valle Centro",
+        "ageb_ids": ["0901400010011", "0901400010026", "0901400010030", "0901400010045", "090140001005A"],
+        "center_lat": 19.3718, "center_lng": -99.1710,
+        "bbox": {"min_lat": 19.3650, "min_lng": -99.1800, "max_lat": 19.3790, "max_lng": -99.1620},
+    },
+    {
+        "name": "Condesa",
+        "ageb_ids": ["0901500010019", "0901500010023", "0901500010038", "0901500010042"],
+        "center_lat": 19.4113, "center_lng": -99.1733,
+        "bbox": {"min_lat": 19.4060, "min_lng": -99.1810, "max_lat": 19.4170, "max_lng": -99.1660},
+    },
+    {
+        "name": "Polanco",
+        "ageb_ids": ["0901600010016", "0901600010020", "0901600010035", "090160001004A"],
+        "center_lat": 19.4330, "center_lng": -99.1950,
+        "bbox": {"min_lat": 19.4270, "min_lng": -99.2050, "max_lat": 19.4390, "max_lng": -99.1850},
+    },
+    {
+        "name": "Roma Norte",
+        "ageb_ids": ["0901500010095", "0901500010108", "0901500010112"],
+        "center_lat": 19.4190, "center_lng": -99.1620,
+        "bbox": {"min_lat": 19.4140, "min_lng": -99.1700, "max_lat": 19.4240, "max_lng": -99.1540},
+    }
+]
 
 class ZoneService:
-    """Service for zone validation and dynamic AGEB lookup via PostGIS."""
-
     def __init__(self) -> None:
-        user = os.getenv("POSTGRES_USER", "admin")
-        password = os.getenv("POSTGRES_PASSWORD", "admin_password_safe")
-        db = os.getenv("POSTGRES_DB", "geoanalisis")
-        host = os.getenv("DB_HOST", "geo-db")
-        self.engine = create_engine(f"postgresql://{user}:{password}@{host}:5432/{db}")
-        self.Session = sessionmaker(bind=self.engine)
+        self._zones = [self._build_zone(e) for e in _ZONE_CATALOG]
+        self._names = [z.name for z in self._zones]
 
-    def get_dynamic_zone(self, name: str, lat: float, lng: float, radius_km: float = 2.0) -> Zone:
-        """Find AGEBs dynamically around a point using PostGIS."""
-        session = self.Session()
-        try:
-            # Consulta espacial CORRECTA usando geography para metros reales
-            query = text("""
-                SELECT id 
-                FROM ageb_demographics 
-                WHERE ST_DWithin(location::geography, ST_SetSRID(ST_Point(:lng, :lat), 4326)::geography, :radius)
-            """)
-            result = session.execute(query, {"lng": lng, "lat": lat, "radius": radius_km * 1000})
-            ageb_ids = [row.id for row in result]
-            
-            logger.info(f"Dynamic zone lookup: Found {len(ageb_ids)} AGEBs for {name} in {radius_km}km")
+    def _build_zone(self, e: dict) -> Zone:
+        return Zone(name=e["name"], ageb_ids=e["ageb_ids"], center_lat=e["center_lat"], center_lng=e["center_lng"], bbox=BoundingBox(**e["bbox"]))
 
-            return Zone(
-                name=name,
-                ageb_ids=ageb_ids,
-                center_lat=lat,
-                center_lng=lng,
-                bbox=BoundingBox(
-                    min_lat=lat - 0.02, min_lng=lng - 0.02,
-                    max_lat=lat + 0.02, max_lng=lng + 0.02
-                )
-            )
-        except Exception as e:
-            logger.error(f"Error in dynamic zone lookup: {e}")
-            return Zone(
-                name=name, ageb_ids=[], center_lat=lat, center_lng=lng,
-                bbox=BoundingBox(min_lat=lat, min_lng=lng, max_lat=lat, max_lng=lng)
-            )
-        finally:
-            session.close()
+    def get_zone(self, name: str) -> Zone | None:
+        name = name.lower().strip()
+        for z in self._zones:
+            if z.name.lower() == name: return z
+        return None
 
-    def validate_input(self, business_type: str, zone: str) -> tuple[bool, list[str]]:
+    def search_zones(self, query: str) -> list[Zone]:
+        results = process.extract(query, self._names, limit=5)
+        return [self.get_zone(n) for n, score in results if score > 50]
+
+    def validate_input(self, biz: str, zone: str) -> tuple[bool, list[str]]:
         errors = []
-        if not business_type or not business_type.strip(): errors.append("Tipo de negocio requerido")
-        if not zone or not zone.strip(): errors.append("Zona requerida")
+        if not biz: errors.append("Tipo de negocio requerido")
+        if not zone: errors.append("Zona requerida")
         return (len(errors) == 0, errors)
+
+    def suggest_similar_zones(self, name: str) -> list[str]:
+        results = process.extract(name, self._names, limit=3)
+        return [n for n, s in results if s > 40]

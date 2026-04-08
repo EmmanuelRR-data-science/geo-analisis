@@ -1,80 +1,67 @@
 from __future__ import annotations
 import logging
-import os
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+import pandas as pd
+from pathlib import Path
 from app.models.schemas import AGEBData
 
 logger = logging.getLogger(__name__)
 
 class AGEBReader:
-    """Reads demographic data from PostGIS database."""
+    """Reads demographic data from INEGI Excel files."""
 
     def __init__(self) -> None:
-        user = os.getenv("POSTGRES_USER", "admin")
-        password = os.getenv("POSTGRES_PASSWORD", "admin_password_safe")
-        db = os.getenv("POSTGRES_DB", "geoanalisis")
-        host = os.getenv("DB_HOST", "geo-db")
-        self.engine = create_engine(f"postgresql://{user}:{password}@{host}:5432/{db}")
-        self.Session = sessionmaker(bind=self.engine)
+        self._df: pd.DataFrame | None = None
 
-    def load(self, filepath: str = "") -> None:
-        """Legacy compatibility method."""
-        logger.info("Using PostGIS as data source (Excel ignored).")
+    def load(self, filepath: str) -> None:
+        """Load the Excel file into memory."""
+        logger.info(f"Loading AGEB data from {filepath}")
+        if not Path(filepath).exists():
+            raise FileNotFoundError(f"File not found: {filepath}")
+        
+        # Carga optimizada
+        self._df = pd.read_excel(filepath)
+        # Asegurar tipos de datos para filtros
+        self._df['MZA'] = self._df['MZA'].astype(str).str.strip().str.zfill(3)
+        self._df['AGEB'] = self._df['AGEB'].astype(str).str.strip().str.zfill(4)
+        self._df['ENTIDAD'] = self._df['ENTIDAD'].astype(str).str.strip().str.zfill(2)
+        self._df['MUN'] = self._df['MUN'].astype(str).str.strip().str.zfill(3)
+        self._df['LOC'] = self._df['LOC'].astype(str).str.strip().str.zfill(4)
+        
+        # Crear ID único
+        self._df['id'] = self._df['ENTIDAD'] + self._df['MUN'] + self._df['LOC'] + self._df['AGEB']
 
     def get_zone_data(self, ageb_ids: list[str]) -> AGEBData:
-        """Aggregate demographic data from PostGIS for given AGEB IDs."""
-        if not ageb_ids:
+        """Aggregate data for a list of AGEB IDs."""
+        if self._df is None or not ageb_ids:
             return self._empty_data()
 
-        session = self.Session()
-        try:
-            # Consulta agregada directa en SQL para máxima eficiencia
-            query = text("""
-                SELECT 
-                    SUM(total_population) as total_pop,
-                    SUM(economically_active_population) as total_pea,
-                    COUNT(*) as ageb_count,
-                    AVG((indicators->>'avg_schooling')::float) as avg_schooling,
-                    AVG((indicators->>'pct_internet')::float) as pct_internet,
-                    AVG((indicators->>'pct_car')::float) as pct_car,
-                    AVG((indicators->>'pct_pc')::float) as pct_pc
-                FROM ageb_demographics 
-                WHERE id IN :ids
-            """)
-            result = session.execute(query, {"ids": tuple(ageb_ids)}).fetchone()
+        # Filtrar por IDs y asegurar que sea el total del AGEB (MZA == '000')
+        mask = (self._df['id'].isin(ageb_ids)) & (self._df['MZA'] == '000')
+        subset = self._df[mask]
 
-            if not result or result.total_pop is None:
-                return self._empty_data()
-
-            avg_schooling = result.avg_schooling or 0
-            nse = "Bajo"
-            if avg_schooling >= 14: nse = "Alto"
-            elif avg_schooling >= 12: nse = "Medio-Alto"
-            elif avg_schooling >= 10: nse = "Medio"
-            elif avg_schooling >= 7: nse = "Medio-Bajo"
-
-            return AGEBData(
-                total_population=int(result.total_pop),
-                population_density=round(result.total_pop / (result.ageb_count * 0.25), 2),
-                economically_active_population=int(result.total_pea),
-                socioeconomic_level=nse,
-                ageb_count=result.ageb_count,
-                avg_schooling_years=round(avg_schooling, 1),
-                pct_with_internet=round(result.pct_internet or 0, 1),
-                pct_with_car=round(result.pct_car or 0, 1),
-                pct_with_computer=round(result.pct_pc or 0, 1),
-                raw_indicators={}
-            )
-        except Exception as e:
-            logger.error(f"Error querying PostGIS: {e}")
+        if subset.empty:
+            logger.warning(f"No data found for AGEBs: {ageb_ids[:3]}")
             return self._empty_data()
-        finally:
-            session.close()
+
+        total_pop = subset['POBTOT'].sum()
+        total_pea = subset['PEA'].sum() if 'PEA' in subset else 0
+        avg_schooling = subset['GRAPROES'].mean() if 'GRAPROES' in subset else 0
+
+        return AGEBData(
+            total_population=int(total_pop),
+            population_density=round(total_pop / (len(subset) * 0.25), 2) if len(subset) > 0 else 0,
+            economically_active_population=int(total_pea),
+            socioeconomic_level=self._classify_nse(avg_schooling),
+            ageb_count=len(subset),
+            avg_schooling_years=round(avg_schooling, 1),
+            raw_indicators={}
+        )
+
+    def _classify_nse(self, schooling: float) -> str:
+        if schooling >= 14: return "Alto"
+        if schooling >= 12: return "Medio-Alto"
+        if schooling >= 10: return "Medio"
+        return "Bajo"
 
     def _empty_data(self) -> AGEBData:
-        return AGEBData(
-            total_population=0, population_density=0.0,
-            economically_active_population=0, socioeconomic_level="Desconocido",
-            ageb_count=0, raw_indicators={}
-        )
+        return AGEBData(total_population=0, population_density=0.0, economically_active_population=0, socioeconomic_level="N/D", ageb_count=0, raw_indicators={})
