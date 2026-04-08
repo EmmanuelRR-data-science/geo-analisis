@@ -5,10 +5,12 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para algunas librerías de Python (como weasyprint o psycopg2 si no es binary)
+# Instalar dependencias del sistema necesarias para algunas librerías de Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    fonts-liberation \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar dependencias usando uv
