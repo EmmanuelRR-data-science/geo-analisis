@@ -23,11 +23,11 @@ class ZoneService:
         """Find AGEBs dynamically around a point using PostGIS."""
         session = self.Session()
         try:
-            # Consulta espacial: busca AGEBs en un radio ST_DWithin (metros)
+            # Consulta espacial CORRECTA usando geography para metros reales
             query = text("""
                 SELECT id 
                 FROM ageb_demographics 
-                WHERE ST_DWithin(location, ST_SetSRID(ST_Point(:lng, :lat), 4326), :radius)
+                WHERE ST_DWithin(location::geography, ST_SetSRID(ST_Point(:lng, :lat), 4326)::geography, :radius)
             """)
             result = session.execute(query, {"lng": lng, "lat": lat, "radius": radius_km * 1000})
             ageb_ids = [row.id for row in result]

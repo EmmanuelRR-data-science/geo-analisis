@@ -47,6 +47,10 @@ class LLMService:
 
     def __init__(self) -> None:
         self.api_key = os.getenv("GROQ_API_KEY", "")
+        if self.api_key:
+            logger.info(f"GROQ_API_KEY detectada (longitud: {len(self.api_key)})")
+        else:
+            logger.error("GROQ_API_KEY NO DETECTADA en el entorno")
 
     async def _call_groq(self, messages: list[dict[str, str]], temperature: float = 0.3) -> str | None:
         """Realiza una llamada a la API de Groq con reintentos y manejo de 429.
