@@ -44,7 +44,12 @@ def migrate():
     print(f"📖 Leyendo {file_path}...")
     cols = ['ENTIDAD', 'MUN', 'LOC', 'AGEB', 'MZA', 'POBTOT', 'PEA', 'GRAPROES', 'VPH_INTER', 'VPH_AUTOM', 'VPH_PC']
     df = pd.read_excel(file_path, usecols=cols)
+    
+    # Limpieza de la columna MZA para asegurar que el filtro '000' funcione
+    df['MZA'] = df['MZA'].astype(str).str.strip().str.zfill(3)
     df_ageb = df[df['MZA'] == '000'].copy()
+    
+    print(f"📊 Registros de AGEB encontrados para migrar: {len(df_ageb)}")
 
     records = []
     for _, row in df_ageb.iterrows():
