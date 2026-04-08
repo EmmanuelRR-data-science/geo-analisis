@@ -28,10 +28,8 @@ COPY --from=builder /app/.venv /app/.venv
 # Asegurar que el PATH incluya el venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Copiar el código fuente
-COPY app /app/app
-COPY static /app/static
-COPY .env.example /app/.env.example
+# Copiar el código fuente y archivos de configuración
+COPY . /app/
 
 # Exponer el puerto de FastAPI
 EXPOSE 8000
