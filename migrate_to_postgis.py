@@ -13,7 +13,7 @@ load_dotenv()
 DB_USER = os.getenv("POSTGRES_USER", "admin")
 DB_PASS = os.getenv("POSTGRES_PASSWORD", "admin_password_safe")
 DB_NAME = os.getenv("POSTGRES_DB", "geoanalisis")
-DB_HOST = os.getenv("DB_HOST", "localhost")  # Localhost para correr desde afuera si hay tunel, o IP
+DB_HOST = os.getenv("DB_HOST", "db")  # 'db' es el nombre del servicio en docker-compose.yml
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
 def clean_value(val):
