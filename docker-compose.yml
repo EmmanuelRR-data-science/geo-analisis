@@ -10,12 +10,12 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      db:
+      geo-db:
         condition: service_healthy
     networks:
       - geo-network
 
-  db:
+  geo-db:
     image: postgis/postgis:16-3.4
     container_name: geo-analisis-db
     restart: always

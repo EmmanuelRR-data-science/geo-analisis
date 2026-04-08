@@ -10,7 +10,7 @@ from geoalchemy2.elements import WKTElement
 DB_USER = "admin"
 DB_PASS = "admin_password_safe"
 DB_NAME = "geoanalisis"
-DB_HOST = "db" # Nombre del servicio en docker-compose
+DB_HOST = "geo-db" # Nombre del servicio en docker-compose
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
