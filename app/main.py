@@ -458,8 +458,6 @@ async def analyze(request: Request):
                 message=f"No se encontraron datos demográficos para la zona '{zone_input}' en el radio de {radius_km}km. Prueba con una zona más céntrica en CDMX.",
             ).model_dump(),
         )
-            ).model_dump(),
-        )
 
     if not llm_service or not data_service or not analysis_engine:
         return JSONResponse(
