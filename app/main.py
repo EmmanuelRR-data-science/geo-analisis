@@ -37,12 +37,16 @@ AGEB_PATH = os.getenv("AGEB_FILE_PATH", "RESAGEBURB_09XLSX20.xlsx")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Carga inicial de datos
-    try:
-        ageb_reader.load(AGEB_PATH)
-        logger.info("AGEB Data loaded successfully")
-    except Exception as e:
-        logger.error(f"Failed to load AGEB data: {e}")
+    # Carga inicial de datos en segundo plano para no bloquear el inicio
+    def load_data():
+        try:
+            ageb_reader.load(AGEB_PATH)
+            logger.info("AGEB Data loaded successfully in background")
+        except Exception as e:
+            logger.error(f"Failed to load AGEB data: {e}")
+    
+    thread = threading.Thread(target=load_data, daemon=True)
+    thread.start()
     yield
 
 app = FastAPI(title="GeoAnalisis", lifespan=lifespan)
