@@ -9,11 +9,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuración de la base de datos (conectar al contenedor db)
+# Configuración de la base de datos (priorizar variables de entorno de Docker)
 DB_USER = os.getenv("POSTGRES_USER", "admin")
 DB_PASS = os.getenv("POSTGRES_PASSWORD", "admin_password_safe")
 DB_NAME = os.getenv("POSTGRES_DB", "geoanalisis")
-DB_HOST = os.getenv("DB_HOST", "db")  # 'db' es el nombre del servicio en docker-compose.yml
+# En Docker, el host es 'db'. Si corremos local con túnel, podría ser 'localhost'
+DB_HOST = os.getenv("DB_HOST", "db") 
+
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
 def clean_value(val):
@@ -25,9 +27,16 @@ def clean_value(val):
         return 0
 
 def migrate():
-    print("🚀 Iniciando migración de datos a PostGIS...")
-    engine = create_engine(DATABASE_URL)
-    Base.metadata.create_all(engine)
+    print(f"🚀 Intentando conectar a la base de datos en: {DB_HOST}")
+    print(f"🔗 URL: postgresql://{DB_USER}:***@{DB_HOST}:5432/{DB_NAME}")
+    
+    try:
+        engine = create_engine(DATABASE_URL)
+        Base.metadata.create_all(engine)
+        print("✅ Conexión y tablas creadas exitosamente.")
+    except Exception as e:
+        print(f"❌ Error de conexión: {e}")
+        return
     Session = sessionmaker(bind=engine)
     session = Session()
 
