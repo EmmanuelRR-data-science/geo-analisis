@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa de Viabilidad de Negocios — CDMX</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <p>Analizando zona… esto puede tomar unos segundos</p>
+    </div>
+  </div>
+
+  <div class="app-layout">
+    <!-- ============ SIDEBAR ============ -->
+    <aside id="sidebar" class="sidebar">
+      <header class="sidebar-header">
+        <h1>Viabilidad de Negocios</h1>
+        <p class="subtitle">Evalúa dónde abrir tu negocio en CDMX</p>
+      </header>
+
+      <!-- Search form -->
+      <form id="analysis-form" class="analysis-form" autocomplete="off">
+        <div class="form-group">
+          <label for="business-type">Tipo de negocio</label>
+          <input id="business-type" type="text" placeholder="Ej. tienda de ropa para bebés" required />
+        </div>
+
+        <div class="form-group zone-group">
+          <label for="zone-input">Colonia o zona</label>
+          <input id="zone-input" type="text" placeholder="Ej. Condesa, Roma Norte…" required />
+          <ul id="zone-suggestions" class="zone-suggestions hidden"></ul>
+        </div>
+
+        <!-- Radio de búsqueda -->
+        <div class="form-group">
+          <label for="radius-slider">Radio de búsqueda</label>
+          <div class="radius-control">
+            <input id="radius-slider" type="range" min="0.5" max="20" step="0.5" value="5" />
+            <input id="radius-value" type="number" min="0.5" max="20" step="0.5" value="5" />
+            <span class="radius-unit">km</span>
+          </div>
+        </div>
+
+        <!-- Filtros de aliados -->
+        <div class="form-group">
+          <label>Aliados (opcional)</label>
+          <div id="ally-tags" class="tag-container"></div>
+          <div class="filter-input-group">
+            <input id="ally-input" type="text" placeholder="Buscar categoría SCIAN…" />
+            <ul id="ally-suggestions" class="scian-suggestions hidden"></ul>
+          </div>
+        </div>
+
+        <!-- Filtros de competidores -->
+        <div class="form-group">
+          <label>Competidores (opcional)</label>
+          <div id="competitor-tags" class="tag-container"></div>
+          <div class="filter-input-group">
+            <input id="competitor-input" type="text" placeholder="Buscar categoría SCIAN…" />
+            <ul id="competitor-suggestions" class="scian-suggestions hidden"></ul>
+          </div>
+        </div>
+
+        <div id="form-errors" class="message-box error-box hidden"></div>
+
+        <button id="submit-btn" type="submit" class="btn btn-primary">Analizar viabilidad</button>
+      </form>
+
+      <!-- Warnings area -->
+      <div id="warnings-area" class="message-box warning-box hidden"></div>
+
+      <!-- Summary panel (hidden until analysis) -->
+      <section id="summary-panel" class="summary-panel hidden">
+        <h2>Resumen del análisis</h2>
+
+        <div class="score-container">
+          <div id="score-gauge" class="score-gauge">
+            <span id="score-value" class="score-value">—</span>
+          </div>
+          <span id="score-category" class="score-category badge">—</span>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-value" id="metric-competitors">0</span>
+            <span class="metric-label">Competidores</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value" id="metric-complementary">0</span>
+            <span class="metric-label">Complementarios</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value" id="metric-population">0</span>
+            <span class="metric-label">Población</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Recommendation section (hidden until analysis) -->
+      <section id="recommendation-section" class="recommendation-section hidden">
+        <h2>Recomendación</h2>
+        <div id="recommendation-text" class="recommendation-text"></div>
+      </section>
+
+      <!-- Export buttons (hidden until analysis) -->
+      <div id="export-buttons" class="export-buttons hidden">
+        <button id="btn-export-png" class="btn btn-secondary" type="button">Descargar Mapa (PNG)</button>
+        <button id="btn-export-pdf" class="btn btn-secondary" type="button">Descargar Informe (PDF)</button>
+        <button id="btn-export-html" class="btn btn-secondary" type="button">Descargar Mapa (HTML)</button>
+      </div>
+
+      <!-- New analysis button (hidden until analysis) -->
+      <button id="btn-new-analysis" class="btn btn-outline hidden" type="button">Nuevo análisis</button>
+    </aside>
+
+    <!-- ============ MAP AREA ============ -->
+    <main class="map-area">
+      <div id="map" class="map-container"></div>
+
+      <!-- Ring distance control -->
+      <div id="ring-control" class="layer-control hidden">
+        <h4>Anillos de distancia</h4>
+        <div id="ring-toggles"></div>
+      </div>
+
+      <!-- Map legend -->
+      <div class="map-legend">
+        <h4>Leyenda</h4>
+        <div class="legend-item">
+          <span class="legend-dot green"></span> Complementario
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot red"></span> Competidor
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+
+  <!-- html2canvas (for later export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- App JS -->
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/export.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

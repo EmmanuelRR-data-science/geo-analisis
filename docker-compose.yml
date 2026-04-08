@@ -1,0 +1,42 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: geo-analisis-app
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - geo-network
+
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: geo-analisis-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-geoanalisis}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No exponemos puertos al exterior para cumplir con el estándar de ciberseguridad
+    networks:
+      - geo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-geoanalisis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  geo-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
