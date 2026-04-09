@@ -161,7 +161,7 @@ class LLMService:
             {"role": "user", "content": prompt},
         ]
 
-        response_text = await self._call_groq(messages, model=GROQ_MODEL_FAST)
+        response_text = await self._call_groq(messages, temperature=0, model=GROQ_MODEL_FAST)
         if response_text:
             parsed = self._parse_json_response(response_text)
             if parsed:
@@ -244,12 +244,18 @@ class LLMService:
         if user_filters:
             ally = user_filters.get("ally_filters", [])
             comp = user_filters.get("competitor_filters", [])
-            if ally or comp:
+            google_ally = user_filters.get("google_ally_categories", [])
+            google_comp = user_filters.get("google_competitor_categories", [])
+            if ally or comp or google_ally or google_comp:
                 prompt += "⚠️ REGLAS OBLIGATORIAS DEL USUARIO:\n"
                 if comp:
                     prompt += f"- Negocios tipo [{', '.join(comp)}] son SIEMPRE competidores (X)\n"
                 if ally:
                     prompt += f"- Negocios tipo [{', '.join(ally)}] son SIEMPRE complementarios (C)\n"
+                if google_comp:
+                    prompt += f"- Negocios con categoría Google [{', '.join(google_comp)}] son SIEMPRE competidores (X) con relevancia alta\n"
+                if google_ally:
+                    prompt += f"- Negocios con categoría Google [{', '.join(google_ally)}] son SIEMPRE complementarios (C) con relevancia alta\n"
                 prompt += "Estas reglas tienen PRIORIDAD ABSOLUTA sobre tu criterio.\n\n"
 
         prompt += (
@@ -267,7 +273,7 @@ class LLMService:
             {"role": "user", "content": prompt},
         ]
 
-        response_text = await self._call_groq(messages, model=GROQ_MODEL_FAST)
+        response_text = await self._call_groq(messages, temperature=0, model=GROQ_MODEL_FAST)
         if response_text:
             parsed = self._parse_json_response(response_text)
             if parsed and "r" in parsed:
@@ -303,114 +309,102 @@ class LLMService:
         businesses: list[Business],
         user_filters: dict | None = None,
     ) -> list[ClassifiedBusiness]:
-        """Fallback: clasificación por reglas estáticas SCIAN.
-
-        When *user_filters* are provided they take priority over the static
-        ``AFFINITY_RULES``.  A business whose SCIAN code or category matches
-        an ``ally_filters`` entry is classified as ``"complementary"``; one
-        matching a ``competitor_filters`` entry is classified as
-        ``"competitor"``.
-
-        Args:
-            user_business: Interpretación del negocio del usuario.
-            businesses: Lista de negocios a clasificar.
-            user_filters: Filtros opcionales del usuario.
-
-        Returns:
-            Lista de ClassifiedBusiness usando reglas estáticas.
-        """
+        """Fallback: clasificación por reglas de texto y SCIAN."""
         user_code = user_business.scian_code
+        user_desc = user_business.scian_description.lower()
+        user_input = user_business.original_input.lower()
+
         complementary_codes = {c.code for c in user_business.complementary_categories}
         competitor_codes = {c.code for c in user_business.competitor_categories}
+        complementary_descs = {c.description.lower() for c in user_business.complementary_categories}
+        competitor_descs = {c.description.lower() for c in user_business.competitor_categories}
 
-        # Also get from affinity rules
         rules = AFFINITY_RULES.get(user_code, {})
         complementary_codes.update(rules.get("complementary", []))
         competitor_codes.update(rules.get("competitor", []))
 
-        # Build user-filter lookup sets (codes and lowered descriptions)
-        uf_ally_codes: set[str] = set()
-        uf_ally_descs: set[str] = set()
-        uf_comp_codes: set[str] = set()
-        uf_comp_descs: set[str] = set()
+        # User filter sets
+        uf_comp_words: set[str] = set()
+        uf_ally_words: set[str] = set()
         if user_filters:
-            for f in user_filters.get("ally_filters", []):
-                f_str = str(f).strip()
-                if f_str:
-                    uf_ally_codes.add(f_str)
-                    uf_ally_descs.add(f_str.lower())
             for f in user_filters.get("competitor_filters", []):
-                f_str = str(f).strip()
-                if f_str:
-                    uf_comp_codes.add(f_str)
-                    uf_comp_descs.add(f_str.lower())
+                for w in str(f).lower().split():
+                    if len(w) > 2:
+                        uf_comp_words.add(w)
+            for f in user_filters.get("ally_filters", []):
+                for w in str(f).lower().split():
+                    if len(w) > 2:
+                        uf_ally_words.add(w)
+
+        # Google category sets (highest priority)
+        google_comp_cats: set[str] = set()
+        google_ally_cats: set[str] = set()
+        if user_filters:
+            for cat in user_filters.get("google_competitor_categories", []):
+                google_comp_cats.add(str(cat).lower())
+            for cat in user_filters.get("google_ally_categories", []):
+                google_ally_cats.add(str(cat).lower())
+
+        # Keywords from user's business for competitor detection
+        user_keywords = set()
+        for w in (user_desc + " " + user_input).split():
+            if len(w) > 3:
+                user_keywords.add(w)
 
         result = []
         for b in businesses:
             biz_code = b.denue_scian_code or ""
-            biz_category_lower = b.category.lower()
-            classification = "unclassified"
+            biz_text = (b.name + " " + b.category).lower()
+            biz_words = {w for w in biz_text.split() if len(w) > 2}
+            classification = "complementary"  # Default: assume complementary (better than unclassified)
             relevance = "low"
 
-            # --- User filters take priority ---
-            matched_by_user_filter = False
-            if uf_ally_codes or uf_comp_codes:
-                # Check competitor filters first (user explicitly said competitor)
-                if biz_code and biz_code in uf_comp_codes:
-                    classification = "competitor"
-                    relevance = "high"
-                    matched_by_user_filter = True
-                elif any(d in biz_category_lower for d in uf_comp_descs):
-                    classification = "competitor"
-                    relevance = "high"
-                    matched_by_user_filter = True
-                # Then ally filters
-                elif biz_code and biz_code in uf_ally_codes:
-                    classification = "complementary"
-                    relevance = "high"
-                    matched_by_user_filter = True
-                elif any(d in biz_category_lower for d in uf_ally_descs):
-                    classification = "complementary"
-                    relevance = "high"
-                    matched_by_user_filter = True
+            # Collect business google_types as lowercase set
+            biz_google_types: set[str] = set()
+            if b.google_types:
+                biz_google_types = {t.lower() for t in b.google_types}
 
-            # --- Standard AFFINITY_RULES logic (only if not matched by user filter) ---
-            if not matched_by_user_filter:
-                if biz_code:
-                    if biz_code in competitor_codes:
-                        classification = "competitor"
-                        relevance = "high" if biz_code == user_code else "medium"
-                    elif biz_code in complementary_codes:
-                        classification = "complementary"
-                        relevance = "medium"
-                    elif biz_code[:4] == user_code[:4]:
-                        # Same 4-digit group = likely competitor
-                        classification = "competitor"
-                        relevance = "low"
-                    elif biz_code[:2] == user_code[:2]:
-                        # Same 2-digit sector = possibly complementary
-                        classification = "complementary"
-                        relevance = "low"
+            # 0. Google categories (HIGHEST priority — user explicit selection)
+            if google_comp_cats and (google_comp_cats & biz_google_types):
+                classification = "competitor"
+                relevance = "high"
+            elif google_ally_cats and (google_ally_cats & biz_google_types):
+                classification = "complementary"
+                relevance = "high"
+            # 1. User text filters (high priority)
+            elif uf_comp_words and (uf_comp_words & biz_words):
+                classification = "competitor"
+                relevance = "high"
+            elif uf_ally_words and (uf_ally_words & biz_words):
+                classification = "complementary"
+                relevance = "high"
+            # 2. SCIAN code matching
+            elif biz_code and biz_code in competitor_codes:
+                classification = "competitor"
+                relevance = "high" if biz_code == user_code else "medium"
+            elif biz_code and biz_code in complementary_codes:
+                classification = "complementary"
+                relevance = "medium"
+            elif biz_code and user_code and biz_code[:4] == user_code[:4]:
+                classification = "competitor"
+                relevance = "low"
+            # 3. Text matching against competitor/complementary descriptions
+            elif any(d in biz_text for d in competitor_descs if len(d) > 3):
+                classification = "competitor"
+                relevance = "medium"
+            elif any(d in biz_text for d in complementary_descs if len(d) > 3):
+                classification = "complementary"
+                relevance = "medium"
+            # 4. Keyword overlap with user's business = likely competitor
+            elif user_keywords & biz_words:
+                classification = "competitor"
+                relevance = "medium" if len(user_keywords & biz_words) > 1 else "low"
+            # 5. Default: complementary with low relevance (better than unclassified)
+            else:
+                classification = "complementary"
+                relevance = "low"
 
-                # Text-based fallback if no SCIAN code
-                if classification == "unclassified" and not biz_code:
-                    category_lower = b.category.lower()
-                    user_desc_lower = user_business.scian_description.lower()
-                    # Simple keyword overlap check
-                    user_words = {w for w in user_desc_lower.split() if len(w) > 3}
-                    cat_words = {w for w in category_lower.split() if len(w) > 3}
-                    overlap = user_words & cat_words
-                    if overlap:
-                        classification = "competitor"
-                        relevance = "medium" if len(overlap) > 1 else "low"
-
-            result.append(
-                ClassifiedBusiness(
-                    **b.model_dump(),
-                    classification=classification,
-                    relevance=relevance,
-                )
-            )
+            result.append(ClassifiedBusiness(**b.model_dump(), classification=classification, relevance=relevance))
         return result
 
     # ----------------------------------------------------------------
@@ -452,9 +446,9 @@ class LLMService:
                 "identificados y sugiere al emprendedor considerar zonas alternativas. "
                 "Sé honesto pero empático."
             )
-        else:  # Viable con reservas
+        else:  # Viable con enfoque estratégico
             category_instructions = (
-                "La categoría es 'Viable con reservas'. Presenta tanto los factores positivos "
+                "La categoría es 'Viable con enfoque estratégico'. Presenta tanto los factores positivos "
                 "como los riesgos identificados. Sugiere precauciones que el emprendedor "
                 "debería tomar antes de decidir."
             )
@@ -583,10 +577,10 @@ class LLMService:
                 f"y las condiciones demográficas sean más favorables para su emprendimiento. "
                 f"Evaluar otras ubicaciones podría mejorar significativamente sus posibilidades de éxito."
             )
-        else:  # Viable con reservas
+        else:  # Viable con enfoque estratégico
             category_text = (
                 f"Con un puntaje de viabilidad de {score:.1f} sobre 100, la zona se clasifica "
-                f"como Viable con reservas. Existen factores positivos como la presencia de "
+                f"como Viable con enfoque estratégico. Existen factores positivos como la presencia de "
                 f"negocios complementarios y ciertos indicadores demográficos favorables. "
                 f"Sin embargo, también se identificaron riesgos que deben considerarse, "
                 f"como la cantidad de competidores en la zona y algunas limitaciones en "
@@ -596,6 +590,262 @@ class LLMService:
             )
 
         return f"{zone_summary} {ecosystem} {category_text}"
+
+    # ----------------------------------------------------------------
+    # generate_strategic_recommendations
+    # ----------------------------------------------------------------
+
+    async def generate_strategic_recommendations(
+        self,
+        analysis_data: AnalysisResult,
+        user_filters: dict | None = None,
+    ) -> list[str]:
+        """Generate 3-7 actionable strategic recommendations based on competitor data.
+
+        Uses the big Groq model for quality. Falls back to rule-based generation
+        if the LLM is unavailable.
+
+        Args:
+            analysis_data: Complete analysis result with classified businesses.
+            user_filters: Optional user filters with google categories.
+
+        Returns:
+            List of 3-7 recommendation strings.
+        """
+        competitors = [b for b in analysis_data.businesses if b.classification == "competitor"]
+        complementary = [b for b in analysis_data.businesses if b.classification == "complementary"]
+        ageb = analysis_data.ageb_data
+
+        # Build competitor data summary
+        comp_summary_parts = []
+        for c in competitors[:15]:
+            parts = [f"- {c.name} ({c.category})"]
+            if c.google_rating is not None:
+                parts.append(f"rating={c.google_rating}")
+            if c.google_reviews_count is not None:
+                parts.append(f"reseñas={c.google_reviews_count}")
+            if c.google_price_level is not None:
+                parts.append(f"precio={c.google_price_level}")
+            if c.google_hours:
+                parts.append(f"horario={'; '.join(c.google_hours[:3])}")
+            if c.google_reviews:
+                snippets = [f'"{r.text[:80]}" ({r.rating}★)' for r in c.google_reviews[:2]]
+                parts.append(f"reseñas_texto=[{', '.join(snippets)}]")
+            comp_summary_parts.append(", ".join(parts))
+
+        comp_text = "\n".join(comp_summary_parts) if comp_summary_parts else "No se encontraron competidores directos."
+
+        prompt = (
+            f"Eres un consultor de negocios experto. Analiza los siguientes datos de competidores "
+            f"para un emprendedor que quiere abrir un negocio de '{analysis_data.business_type.scian_description}' "
+            f"en la zona '{analysis_data.zone.name}'.\n\n"
+            f"COMPETIDORES ({len(competitors)}):\n{comp_text}\n\n"
+            f"COMPLEMENTARIOS: {len(complementary)} negocios\n\n"
+            f"DATOS DEMOGRÁFICOS:\n"
+            f"- Población: {ageb.total_population:,}\n"
+            f"- PEA: {ageb.economically_active_population:,}\n"
+            f"- Nivel socioeconómico: {ageb.socioeconomic_level}\n"
+            f"- Escolaridad promedio: {ageb.avg_schooling_years:.1f} años\n\n"
+        )
+
+        if user_filters:
+            google_comp = user_filters.get("google_competitor_categories", [])
+            google_ally = user_filters.get("google_ally_categories", [])
+            if google_comp:
+                prompt += f"Categorías Google competidoras: {', '.join(google_comp)}\n"
+            if google_ally:
+                prompt += f"Categorías Google aliadas: {', '.join(google_ally)}\n"
+
+        prompt += (
+            "\nGenera entre 3 y 7 recomendaciones estratégicas ACCIONABLES. Cada recomendación debe:\n"
+            "- Ser concreta y accionable (no genérica)\n"
+            "- Incluir datos cuantitativos de respaldo cuando sea posible\n"
+            "- Cubrir aspectos como: horarios diferenciados, posicionamiento de precio, "
+            "diferenciación de servicio, brechas de mercado\n\n"
+            'Responde ÚNICAMENTE con un JSON array de strings: ["recomendación 1", "recomendación 2", ...]\n'
+            "No incluyas texto adicional fuera del JSON."
+        )
+
+        messages = [
+            {"role": "system", "content": "Eres un consultor de negocios experto en el mercado mexicano. Generas recomendaciones estratégicas accionables. Responde siempre en español y en formato JSON."},
+            {"role": "user", "content": prompt},
+        ]
+
+        response_text = await self._call_groq(messages, temperature=0.4, model=GROQ_MODEL)
+        if response_text:
+            try:
+                cleaned = response_text.strip()
+                if cleaned.startswith("```"):
+                    lines = cleaned.split("\n")
+                    lines = [l for l in lines if not l.strip().startswith("```")]
+                    cleaned = "\n".join(lines)
+                parsed = json.loads(cleaned)
+                if isinstance(parsed, list):
+                    recs = [str(r).strip() for r in parsed if str(r).strip()]
+                    if 3 <= len(recs) <= 7:
+                        return recs
+                    # If outside range, trim or pad
+                    if len(recs) > 7:
+                        return recs[:7]
+                    # If less than 3, fall through to fallback
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning("Could not parse strategic recommendations from LLM")
+
+        return self._fallback_strategic_recommendations(analysis_data)
+
+    def _fallback_strategic_recommendations(
+        self,
+        analysis_data: AnalysisResult,
+    ) -> list[str]:
+        """Fallback: generate strategic recommendations using predefined rules.
+
+        Analyzes competitor hours, ratings, price levels, and demographics
+        to produce 3-7 non-empty recommendation strings.
+
+        Args:
+            analysis_data: Complete analysis result.
+
+        Returns:
+            List of 3-7 recommendation strings.
+        """
+        competitors = [b for b in analysis_data.businesses if b.classification == "competitor"]
+        ageb = analysis_data.ageb_data
+        recs: list[str] = []
+
+        if not competitors:
+            # Pioneer opportunity recommendations
+            recs.append(
+                f"Oportunidad de mercado pionero: no se identificaron competidores directos en la zona. "
+                f"Esto representa una ventaja de primer movimiento para captar la demanda existente."
+            )
+            if ageb.total_population > 0:
+                recs.append(
+                    f"La zona cuenta con {ageb.total_population:,} habitantes y "
+                    f"{ageb.economically_active_population:,} personas económicamente activas. "
+                    f"Considere estrategias de marketing local para captar este mercado sin competencia directa."
+                )
+            recs.append(
+                "Al ser pionero, establezca precios competitivos iniciales para generar lealtad "
+                "de clientes antes de que lleguen competidores a la zona."
+            )
+            recs.append(
+                "Invierta en visibilidad local (señalización, redes sociales geolocalizadas) "
+                "para posicionarse como la referencia del sector en la zona."
+            )
+            return recs[:7]
+
+        # 1. Analyze hours gaps
+        days_coverage: dict[str, int] = {}
+        for c in competitors:
+            if c.google_hours:
+                for h in c.google_hours:
+                    day = h.split(":")[0].strip().lower() if ":" in h else h.strip().lower()
+                    days_coverage[day] = days_coverage.get(day, 0) + 1
+
+        if days_coverage:
+            min_day = min(days_coverage, key=days_coverage.get)  # type: ignore[arg-type]
+            min_count = days_coverage[min_day]
+            total = len(competitors)
+            recs.append(
+                f"Horario diferenciado: solo {min_count} de {total} competidores operan los {min_day}. "
+                f"Considere abrir en ese horario para captar demanda desatendida."
+            )
+
+        # 2. Analyze ratings
+        ratings = [c.google_rating for c in competitors if c.google_rating is not None]
+        if ratings:
+            avg_rating = sum(ratings) / len(ratings)
+            if avg_rating < 3.5:
+                recs.append(
+                    f"Diferenciación por calidad: el rating promedio de competidores es {avg_rating:.1f}/5. "
+                    f"Enfóquese en calidad de servicio para superar esta media y atraer clientes insatisfechos."
+                )
+            elif avg_rating >= 4.0:
+                recs.append(
+                    f"Mercado exigente: el rating promedio de competidores es {avg_rating:.1f}/5. "
+                    f"Asegure estándares de calidad altos desde el inicio para competir efectivamente."
+                )
+            else:
+                recs.append(
+                    f"El rating promedio de competidores es {avg_rating:.1f}/5. "
+                    f"Apunte a superar esta media con un servicio diferenciado para destacar en la zona."
+                )
+
+        # 3. Analyze price levels
+        price_levels = [c.google_price_level for c in competitors if c.google_price_level is not None]
+        if price_levels:
+            avg_price = sum(price_levels) / len(price_levels)
+            price_labels = {0: "Gratis", 1: "Económico", 2: "Moderado", 3: "Caro", 4: "Muy caro"}
+            # Find underserved price range
+            price_counts = {i: 0 for i in range(5)}
+            for p in price_levels:
+                price_counts[p] = price_counts.get(p, 0) + 1
+            min_price = min(price_counts, key=price_counts.get)  # type: ignore[arg-type]
+            recs.append(
+                f"Posicionamiento de precio: la mayoría de competidores tiene nivel de precio promedio "
+                f"{avg_price:.1f} ({price_labels.get(round(avg_price), 'Moderado')}). "
+                f"El rango '{price_labels.get(min_price, 'Moderado')}' está menos cubierto — considere posicionarse ahí."
+            )
+
+        # 4. Volume-based recommendation
+        if len(competitors) <= 3:
+            recs.append(
+                f"Baja competencia: solo {len(competitors)} competidores directos en la zona. "
+                f"Esto indica una oportunidad de mercado con demanda potencialmente insatisfecha."
+            )
+        elif len(competitors) >= 10:
+            recs.append(
+                f"Alta competencia: {len(competitors)} competidores directos en la zona. "
+                f"Es fundamental diferenciarse claramente en servicio, precio o especialización."
+            )
+
+        # 5. Reviews-based recommendation
+        review_ratings = []
+        for c in competitors:
+            if c.google_reviews:
+                for r in c.google_reviews:
+                    review_ratings.append(r.rating)
+        if review_ratings:
+            low_reviews = sum(1 for r in review_ratings if r <= 2)
+            if low_reviews > 0:
+                recs.append(
+                    f"Se encontraron {low_reviews} reseñas negativas (≤2 estrellas) entre competidores. "
+                    f"Identifique las quejas comunes y asegúrese de no repetir esos errores."
+                )
+
+        # 6. Demographic recommendation
+        if ageb.total_population > 0:
+            if ageb.avg_schooling_years >= 12:
+                recs.append(
+                    f"La escolaridad promedio de la zona es {ageb.avg_schooling_years:.1f} años (nivel medio-superior). "
+                    f"Considere una oferta que apele a un público con mayor nivel educativo."
+                )
+            elif ageb.avg_schooling_years > 0:
+                recs.append(
+                    f"La escolaridad promedio de la zona es {ageb.avg_schooling_years:.1f} años. "
+                    f"Adapte su comunicación y oferta al perfil educativo de la población local."
+                )
+
+        # 7. Generic differentiation (always include if needed)
+        if len(recs) < 3:
+            recs.append(
+                "Desarrolle una propuesta de valor única que lo diferencie claramente de los competidores "
+                "existentes. Considere especialización, horarios extendidos o servicios adicionales."
+            )
+
+        # Ensure 3-7 range
+        if len(recs) < 3:
+            recs.append(
+                "Establezca presencia digital (Google Maps, redes sociales) desde antes de la apertura "
+                "para generar expectativa y captar clientes potenciales."
+            )
+        if len(recs) < 3:
+            recs.append(
+                "Considere alianzas con negocios complementarios de la zona para generar tráfico cruzado "
+                "y fortalecer su posición en el mercado local."
+            )
+
+        return recs[:7]
 
     def build_recommendation_prompt(
         self,
@@ -635,7 +885,7 @@ class LLMService:
             )
         else:
             category_instructions = (
-                "La categoría es 'Viable con reservas'. Presenta tanto los factores positivos "
+                "La categoría es 'Viable con enfoque estratégico'. Presenta tanto los factores positivos "
                 "como los riesgos identificados."
             )
 

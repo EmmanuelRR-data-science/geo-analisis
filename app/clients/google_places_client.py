@@ -8,7 +8,7 @@ import uuid
 
 import httpx
 
-from app.models.schemas import Business
+from app.models.schemas import Business, GoogleReview
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,8 @@ class GooglePlacesClient:
                 "places.primaryTypeDisplayName,places.rating,"
                 "places.userRatingCount,places.currentOpeningHours,"
                 "places.photos,places.regularOpeningHours,"
+                "places.priceLevel,places.types,places.reviews,"
+                "places.editorialSummary,"
                 "nextPageToken"
             ),
         }
@@ -145,6 +147,79 @@ class GooglePlacesClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    async def search_by_category(
+        self,
+        lat: float,
+        lng: float,
+        radius: int,
+        included_type: str,
+        max_results: int = 20,
+    ) -> list[Business]:
+        """Search for businesses by Google Places category using includedTypes.
+
+        Args:
+            lat: Latitude of the search center.
+            lng: Longitude of the search center.
+            radius: Search radius in metres.
+            included_type: Google Places type (e.g. "restaurant", "cafe").
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of Business models matching the category.
+        """
+        if not self._api_key:
+            logger.warning("GOOGLE_PLACES_API_KEY not configured — skipping category search")
+            return []
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": self._api_key,
+            "X-Goog-FieldMask": (
+                "places.id,places.displayName,places.location,"
+                "places.primaryTypeDisplayName,places.rating,"
+                "places.userRatingCount,places.currentOpeningHours,"
+                "places.photos,places.regularOpeningHours,"
+                "places.priceLevel,places.types,places.reviews,"
+                "places.editorialSummary,"
+                "nextPageToken"
+            ),
+        }
+
+        all_businesses: list[Business] = []
+        page_token: str | None = None
+        pages_fetched = 0
+        max_pages = max(1, (max_results + 19) // 20)
+
+        while pages_fetched < max_pages:
+            body: dict = {
+                "textQuery": included_type,
+                "includedType": included_type,
+                "locationBias": {
+                    "circle": {
+                        "center": {"latitude": lat, "longitude": lng},
+                        "radius": float(radius),
+                    }
+                },
+                "maxResultCount": 20,
+                "languageCode": "es",
+            }
+            if page_token:
+                body["pageToken"] = page_token
+
+            data = await self._fetch_page(headers, body)
+            if data is None:
+                break
+
+            page_businesses = self._parse_nearby_results(data)
+            all_businesses.extend(page_businesses)
+            pages_fetched += 1
+
+            page_token = data.get("nextPageToken")
+            if not page_token or len(all_businesses) >= max_results:
+                break
+
+        return all_businesses[:max_results]
+
     @staticmethod
     def _parse_nearby_results(data: dict) -> list[Business]:
         """Convert raw API response into Business models."""
@@ -170,6 +245,51 @@ class GooglePlacesClient:
             current_hours = place.get("currentOpeningHours", {})
             is_open: bool | None = current_hours.get("openNow") if current_hours else None
 
+            # Extract priceLevel (0-4)
+            price_level: int | None = None
+            raw_price = place.get("priceLevel")
+            if raw_price is not None:
+                # Google may return string like "PRICE_LEVEL_MODERATE" or int
+                if isinstance(raw_price, int):
+                    price_level = raw_price
+                elif isinstance(raw_price, str):
+                    _price_map = {
+                        "PRICE_LEVEL_FREE": 0,
+                        "PRICE_LEVEL_INEXPENSIVE": 1,
+                        "PRICE_LEVEL_MODERATE": 2,
+                        "PRICE_LEVEL_EXPENSIVE": 3,
+                        "PRICE_LEVEL_VERY_EXPENSIVE": 4,
+                    }
+                    price_level = _price_map.get(raw_price)
+
+            # Extract types
+            google_types: list[str] | None = None
+            raw_types = place.get("types")
+            if raw_types and isinstance(raw_types, list):
+                google_types = [str(t) for t in raw_types]
+
+            # Extract reviews (max 5)
+            google_reviews: list[GoogleReview] | None = None
+            raw_reviews = place.get("reviews")
+            if raw_reviews and isinstance(raw_reviews, list):
+                parsed_reviews = []
+                for rev in raw_reviews[:5]:
+                    rev_text_obj = rev.get("text", {})
+                    rev_text = rev_text_obj.get("text", "") if isinstance(rev_text_obj, dict) else str(rev_text_obj)
+                    rev_rating = rev.get("rating", 0)
+                    if rev_text:
+                        parsed_reviews.append(GoogleReview(text=rev_text, rating=int(rev_rating)))
+                google_reviews = parsed_reviews if parsed_reviews else None
+
+            # Extract editorialSummary
+            editorial_summary: str | None = None
+            raw_summary = place.get("editorialSummary")
+            if raw_summary:
+                if isinstance(raw_summary, dict):
+                    editorial_summary = raw_summary.get("text")
+                elif isinstance(raw_summary, str):
+                    editorial_summary = raw_summary
+
             businesses.append(
                 Business(
                     id=place.get("id", str(uuid.uuid4())),
@@ -184,6 +304,10 @@ class GooglePlacesClient:
                     google_hours=hours,
                     google_photos=photos,
                     google_is_open=is_open,
+                    google_price_level=price_level,
+                    google_types=google_types,
+                    google_reviews=google_reviews,
+                    google_editorial_summary=editorial_summary,
                 )
             )
         return businesses

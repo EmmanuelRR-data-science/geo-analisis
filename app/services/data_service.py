@@ -204,6 +204,47 @@ class DataService:
 
         return consolidated, warnings
 
+    async def search_by_google_categories(
+        self,
+        zone: Zone,
+        categories: list[str],
+        radius_m: int = 5000,
+    ) -> list[Business]:
+        """Search businesses by Google Places categories, one search per category.
+
+        Deduplicates results by place_id (Business.id).
+
+        Args:
+            zone: The geographic zone (used for center coordinates).
+            categories: List of Google Places types (e.g. ["restaurant", "cafe"]).
+            radius_m: Search radius in metres.
+
+        Returns:
+            Deduplicated list of Business models.
+        """
+        if not categories:
+            return []
+
+        seen_ids: set[str] = set()
+        results: list[Business] = []
+
+        for cat in categories:
+            try:
+                cat_results = await self._google.search_by_category(
+                    lat=zone.center_lat,
+                    lng=zone.center_lng,
+                    radius=radius_m,
+                    included_type=cat,
+                )
+                for biz in cat_results:
+                    if biz.id not in seen_ids:
+                        seen_ids.add(biz.id)
+                        results.append(biz)
+            except Exception:
+                logger.exception("Google category search failed for '%s'", cat)
+
+        return results
+
     async def get_ageb_data(self, ageb_ids: list[str]) -> AGEBData:
         """Delegate AGEB data retrieval to AGEBReader."""
         try:

@@ -12,7 +12,39 @@ const appState = {
   agebLayers: {},
   layerControl: null,
   activeLayerKeys: [],
+  /* Google category filters */
+  googleAllyCategories: [],
+  googleCompetitorCategories: [],
 };
+
+/* ===== Google Categories ===== */
+var GOOGLE_CATEGORIES = [
+  { value: "restaurant", label: "Restaurante" },
+  { value: "cafe", label: "Café" },
+  { value: "bakery", label: "Panadería" },
+  { value: "bar", label: "Bar" },
+  { value: "pharmacy", label: "Farmacia" },
+  { value: "grocery_store", label: "Tienda de abarrotes" },
+  { value: "supermarket", label: "Supermercado" },
+  { value: "clothing_store", label: "Tienda de ropa" },
+  { value: "shoe_store", label: "Zapatería" },
+  { value: "beauty_salon", label: "Salón de belleza" },
+  { value: "hair_care", label: "Peluquería" },
+  { value: "gym", label: "Gimnasio" },
+  { value: "laundry", label: "Lavandería" },
+  { value: "hardware_store", label: "Ferretería" },
+  { value: "electronics_store", label: "Electrónica" },
+  { value: "pet_store", label: "Mascotas" },
+  { value: "veterinary_care", label: "Veterinaria" },
+  { value: "dentist", label: "Dentista" },
+  { value: "doctor", label: "Consultorio médico" },
+  { value: "car_repair", label: "Taller mecánico" },
+  { value: "gas_station", label: "Gasolinera" },
+  { value: "convenience_store", label: "Tienda de conveniencia" },
+  { value: "florist", label: "Florería" },
+  { value: "book_store", label: "Librería" },
+  { value: "bank", label: "Banco" },
+];
 
 /* ===== DOM refs ===== */
 const dom = {
@@ -56,6 +88,14 @@ const dom = {
   colorScaleTitle: document.getElementById('color-scale-title'),
   colorScaleMin: document.getElementById('color-scale-min'),
   colorScaleMax: document.getElementById('color-scale-max'),
+  /* Google category controls */
+  googleAllySelect: document.getElementById('google-ally-select'),
+  googleAllyTags: document.getElementById('google-ally-tags'),
+  googleCompetitorSelect: document.getElementById('google-competitor-select'),
+  googleCompetitorTags: document.getElementById('google-competitor-tags'),
+  /* Strategic recommendations */
+  strategicRecommendationsSection: document.getElementById('strategic-recommendations-section'),
+  strategicRecommendationsList: document.getElementById('strategic-recommendations-list'),
 };
 
 /* ===== Helpers ===== */
@@ -259,6 +299,106 @@ document.addEventListener('click', function (e) {
   }
 });
 
+/* ===== Google Category Selectors ===== */
+function populateGoogleSelect(selectEl, filterType) {
+  var otherCategories = filterType === 'googleAlly' ? appState.googleCompetitorCategories : appState.googleAllyCategories;
+  var ownCategories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
+
+  // Clear all options except the placeholder
+  selectEl.innerHTML = '<option value="">Seleccionar categoría Google…</option>';
+
+  GOOGLE_CATEGORIES.forEach(function (cat) {
+    // Skip if already selected in either list
+    if (ownCategories.indexOf(cat.value) !== -1) return;
+    if (otherCategories.indexOf(cat.value) !== -1) return;
+
+    var opt = document.createElement('option');
+    opt.value = cat.value;
+    opt.textContent = cat.label;
+    selectEl.appendChild(opt);
+  });
+}
+
+function addGoogleTag(filterType, value) {
+  var categories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
+  var otherCategories = filterType === 'googleAlly' ? appState.googleCompetitorCategories : appState.googleAllyCategories;
+
+  if (categories.indexOf(value) !== -1) return;
+
+  // Cross-validation
+  if (otherCategories.indexOf(value) !== -1) {
+    var otherName = filterType === 'googleAlly' ? 'competidores Google' : 'aliados Google';
+    showError('Esta categoría ya está en ' + otherName + '. No puede estar en ambos.');
+    setTimeout(hideError, 3000);
+    return;
+  }
+
+  categories.push(value);
+  renderGoogleTags(filterType);
+  // Refresh both selects to remove the selected option
+  populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
+  populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
+}
+
+function removeGoogleTag(filterType, value) {
+  var categories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
+  var idx = categories.indexOf(value);
+  if (idx !== -1) {
+    categories.splice(idx, 1);
+    renderGoogleTags(filterType);
+    populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
+    populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
+  }
+}
+
+function getGoogleCategoryLabel(value) {
+  for (var i = 0; i < GOOGLE_CATEGORIES.length; i++) {
+    if (GOOGLE_CATEGORIES[i].value === value) return GOOGLE_CATEGORIES[i].label;
+  }
+  return value;
+}
+
+function renderGoogleTags(filterType) {
+  var container = filterType === 'googleAlly' ? dom.googleAllyTags : dom.googleCompetitorTags;
+  var categories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
+
+  container.innerHTML = categories.map(function (value) {
+    return '<span class="tag">'
+      + escapeHtml(getGoogleCategoryLabel(value))
+      + '<button class="tag-remove google-tag-remove" data-google-filter-type="' + filterType + '" data-value="' + escapeHtml(value) + '" type="button" aria-label="Eliminar">&times;</button>'
+      + '</span>';
+  }).join('');
+}
+
+dom.googleAllySelect.addEventListener('change', function () {
+  var val = dom.googleAllySelect.value;
+  if (val) {
+    addGoogleTag('googleAlly', val);
+    dom.googleAllySelect.value = '';
+  }
+});
+
+dom.googleCompetitorSelect.addEventListener('change', function () {
+  var val = dom.googleCompetitorSelect.value;
+  if (val) {
+    addGoogleTag('googleCompetitor', val);
+    dom.googleCompetitorSelect.value = '';
+  }
+});
+
+// Delegate Google tag removal
+document.addEventListener('click', function (e) {
+  if (e.target.classList.contains('google-tag-remove')) {
+    var ft = e.target.getAttribute('data-google-filter-type');
+    var value = e.target.getAttribute('data-value');
+    removeGoogleTag(ft, value);
+  }
+});
+
+// Initialize selects on load
+populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
+populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
+
 /* ===== Form submission ===== */
 dom.form.addEventListener('submit', function (e) {
   e.preventDefault();
@@ -267,9 +407,23 @@ dom.form.addEventListener('submit', function (e) {
   var businessType = dom.businessType.value.trim();
   var zone = dom.zoneInput.value.trim();
 
+  var customLat = document.getElementById('custom-lat').value.trim();
+  var customLng = document.getElementById('custom-lng').value.trim();
+  var hasCoords = customLat !== '' && customLng !== '';
+
   // Local validation
-  if (!businessType || !zone) {
-    showError('Por favor completa ambos campos: tipo de negocio y zona.');
+  if (!businessType) {
+    showError('Por favor ingresa el tipo de negocio.');
+    return;
+  }
+
+  if (!zone && !hasCoords) {
+    showError('Se requiere una zona o coordenadas. Proporciona al menos uno de los dos.');
+    return;
+  }
+
+  if (hasCoords && (isNaN(parseFloat(customLat)) || isNaN(parseFloat(customLng)))) {
+    showError('Las coordenadas deben ser valores numéricos válidos.');
     return;
   }
 
@@ -277,16 +431,25 @@ dom.form.addEventListener('submit', function (e) {
 
   setLoading(true);
 
+  var payload = {
+    business_type: businessType,
+    zone: zone,
+    radius_km: radiusKm,
+    ally_filters: appState.allyFilters,
+    competitor_filters: appState.competitorFilters,
+    google_ally_categories: appState.googleAllyCategories,
+    google_competitor_categories: appState.googleCompetitorCategories,
+  };
+
+  if (hasCoords) {
+    payload.custom_lat = parseFloat(customLat);
+    payload.custom_lng = parseFloat(customLng);
+  }
+
   fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      business_type: businessType,
-      zone: zone,
-      radius_km: radiusKm,
-      ally_filters: appState.allyFilters,
-      competitor_filters: appState.competitorFilters,
-    }),
+    body: JSON.stringify(payload),
   })
     .then(function (response) {
       return response.json().then(function (data) {
@@ -347,6 +510,16 @@ function renderResults(data) {
   dom.recommendationText.textContent = data.recommendation_text;
   dom.recommendationSection.classList.remove('hidden');
 
+  // Strategic recommendations
+  if (data.strategic_recommendations && data.strategic_recommendations.length > 0) {
+    dom.strategicRecommendationsList.innerHTML = data.strategic_recommendations.map(function (rec, i) {
+      return '<li>' + escapeHtml(rec) + '</li>';
+    }).join('');
+    dom.strategicRecommendationsSection.classList.remove('hidden');
+  } else {
+    dom.strategicRecommendationsSection.classList.add('hidden');
+  }
+
   // Export & new analysis buttons
   dom.exportButtons.classList.remove('hidden');
   dom.btnNewAnalysis.classList.remove('hidden');
@@ -361,7 +534,7 @@ function renderResults(data) {
 
 function getColorClass(category) {
   if (category === 'Recomendable') return 'green';
-  if (category === 'Viable con reservas') return 'amber';
+  if (category === 'Viable con enfoque estratégico') return 'amber';
   return 'red';
 }
 
@@ -371,6 +544,7 @@ dom.btnNewAnalysis.addEventListener('click', function () {
   dom.form.classList.remove('hidden');
   dom.summaryPanel.classList.add('hidden');
   dom.recommendationSection.classList.add('hidden');
+  dom.strategicRecommendationsSection.classList.add('hidden');
   dom.exportButtons.classList.add('hidden');
   dom.btnNewAnalysis.classList.add('hidden');
   dom.warningsArea.classList.add('hidden');

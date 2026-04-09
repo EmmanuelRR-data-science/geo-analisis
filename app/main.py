@@ -82,15 +82,88 @@ async def analyze(request: Request):
     radius_km = max(0.5, min(20.0, radius_km))
     radius_m = int(radius_km * 1000)
 
+    # Custom coordinates (optional)
+    custom_lat = body.get("custom_lat")
+    custom_lng = body.get("custom_lng")
+
+    # Google categories
+    google_ally_categories = body.get("google_ally_categories", []) or []
+    google_competitor_categories = body.get("google_competitor_categories", []) or []
+
     ally_filters = body.get("ally_filters", []) or []
     competitor_filters = body.get("competitor_filters", []) or []
     user_filters = None
-    if ally_filters or competitor_filters:
-        user_filters = {"ally_filters": ally_filters, "competitor_filters": competitor_filters}
+    if ally_filters or competitor_filters or google_ally_categories or google_competitor_categories:
+        user_filters = {
+            "ally_filters": ally_filters,
+            "competitor_filters": competitor_filters,
+            "google_ally_categories": google_ally_categories,
+            "google_competitor_categories": google_competitor_categories,
+        }
 
-    zone = zone_service.get_zone(zone_name)
-    if not zone:
-        return JSONResponse(status_code=404, content={"error": "Zona no encontrada"})
+    # Validate coordinates if provided
+    clat: float | None = None
+    clng: float | None = None
+    if custom_lat is not None and custom_lat != "" and custom_lng is not None and custom_lng != "":
+        try:
+            clat = float(custom_lat)
+            clng = float(custom_lng)
+        except (ValueError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Las coordenadas deben ser valores numéricos válidos"},
+            )
+
+    warnings: list[str] = []
+
+    # Determine zone
+    zone = None
+    if zone_name:
+        zone = zone_service.get_zone(zone_name)
+        if not zone:
+            return JSONResponse(status_code=404, content={"error": "Zona no encontrada"})
+
+    if zone is None and clat is not None and clng is not None:
+        # Create virtual zone from coordinates
+        from app.models.schemas import BoundingBox, Zone as ZoneModel
+        offset = radius_km * 0.009  # approx degrees per km
+        zone = ZoneModel(
+            name="Coordenadas personalizadas",
+            ageb_ids=[],
+            center_lat=clat,
+            center_lng=clng,
+            bbox=BoundingBox(
+                min_lat=clat - offset, min_lng=clng - offset,
+                max_lat=clat + offset, max_lng=clng + offset,
+            ),
+        )
+    elif zone is None:
+        # No zone and no coordinates
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Se requiere una zona o coordenadas para realizar el análisis"},
+        )
+
+    # Override zone center with custom coordinates if zone was selected AND coords provided
+    if clat is not None and clng is not None and zone_name:
+        from app.models.schemas import BoundingBox
+        offset = radius_km * 0.009
+        zone = zone.model_copy(update={
+            "center_lat": clat,
+            "center_lng": clng,
+            "bbox": BoundingBox(
+                min_lat=clat - offset, min_lng=clng - offset,
+                max_lat=clat + offset, max_lng=clng + offset,
+            ),
+        })
+
+    # CDMX bounds warning
+    if clat is not None and clng is not None:
+        if not (19.05 <= clat <= 19.60 and -99.40 <= clng <= -98.90):
+            warnings.append(
+                f"Las coordenadas ({clat}, {clng}) parecen estar fuera de la Ciudad de México. "
+                "Los resultados pueden no ser precisos."
+            )
 
     import asyncio
 
@@ -104,10 +177,39 @@ async def analyze(request: Request):
     )
     search_task = asyncio.create_task(data_service.get_businesses_in_zone(zone, temp_interp, radius_m=radius_m))
 
-    interpretation, (businesses, warnings) = await asyncio.gather(interpret_task, search_task)
+    # Run Google category searches in parallel with main search
+    all_google_categories = list(set(google_ally_categories + google_competitor_categories))
+    category_task = asyncio.create_task(
+        data_service.search_by_google_categories(zone, all_google_categories, radius_m=radius_m)
+    ) if all_google_categories else None
 
-    # Step 2: Get AGEB data (fast, from DB)
-    ageb_data = ageb_reader.get_zone_data(zone.ageb_ids)
+    interpretation, (businesses, biz_warnings) = await asyncio.gather(interpret_task, search_task)
+    warnings.extend(biz_warnings)
+
+    # Consolidate category search results with main results
+    if category_task:
+        category_businesses = await category_task
+        # Deduplicate by id
+        existing_ids = {b.id for b in businesses}
+        for cb in category_businesses:
+            if cb.id not in existing_ids:
+                businesses.append(cb)
+                existing_ids.add(cb.id)
+
+    # Step 2: Get AGEB data
+    if zone.ageb_ids:
+        ageb_data = ageb_reader.get_zone_data(zone.ageb_ids)
+    else:
+        # Virtual zone — empty AGEB data
+        from app.models.schemas import AGEBData
+        ageb_data = AGEBData(
+            total_population=0,
+            population_density=0.0,
+            economically_active_population=0,
+            socioeconomic_level="Desconocido",
+            ageb_count=0,
+            raw_indicators={},
+        )
 
     # Step 3: Classify businesses (uses fast model)
     classified = await llm_service.classify_businesses(interpretation, businesses, user_filters=user_filters)
@@ -127,6 +229,10 @@ async def analyze(request: Request):
 
     # Step 4: Generate recommendation (uses big model)
     result.recommendation_text = await llm_service.generate_recommendation(result, user_filters=user_filters)
+
+    # Step 5: Generate strategic recommendations
+    result.strategic_recommendations = await llm_service.generate_strategic_recommendations(result, user_filters=user_filters)
+
     analysis_store[result.analysis_id] = result
     return result.model_dump()
 

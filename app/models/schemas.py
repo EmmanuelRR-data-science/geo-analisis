@@ -44,6 +44,13 @@ class Zone(BaseModel):
     bbox: BoundingBox
 
 
+class GoogleReview(BaseModel):
+    """Reseña individual de Google Places."""
+
+    text: str
+    rating: int  # 1-5
+
+
 class Business(BaseModel):
     """Consolidated business from multiple data sources."""
 
@@ -59,6 +66,10 @@ class Business(BaseModel):
     google_hours: list[str] | None = None
     google_photos: list[str] | None = None
     google_is_open: bool | None = None
+    google_price_level: int | None = None
+    google_types: list[str] | None = None
+    google_reviews: list[GoogleReview] | None = None
+    google_editorial_summary: str | None = None
     denue_scian_code: str | None = None
     denue_employee_stratum: str | None = None
     denue_registration_date: str | None = None
@@ -111,7 +122,7 @@ class ViabilityResult(BaseModel):
     """Viability calculation result."""
 
     score: float
-    category: Literal["Recomendable", "Viable con reservas", "No recomendable"]
+    category: Literal["Recomendable", "Viable con enfoque estratégico", "No recomendable"]
     factor_scores: dict
     data_completeness: float
 
@@ -142,6 +153,7 @@ class AnalysisResult(BaseModel):
     recommendation_text: str
     warnings: list[str]
     timestamp: str
+    strategic_recommendations: list[str] = []
 
 
 class APIError(BaseModel):

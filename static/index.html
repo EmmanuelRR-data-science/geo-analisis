@@ -39,8 +39,8 @@
         </div>
 
         <div class="form-group zone-group">
-          <label for="zone-input">Colonia o zona</label>
-          <input id="zone-input" type="text" placeholder="Ej. Condesa, Roma Norte…" required />
+          <label for="zone-input">Colonia o zona (opcional si hay coordenadas)</label>
+          <input id="zone-input" type="text" placeholder="Ej. Condesa, Roma Norte…" />
           <ul id="zone-suggestions" class="zone-suggestions hidden"></ul>
         </div>
 
@@ -52,6 +52,16 @@
             <input id="radius-value" type="number" min="0.5" max="20" step="0.5" value="5" />
             <span class="radius-unit">km</span>
           </div>
+        </div>
+
+        <!-- Coordenadas personalizadas -->
+        <div class="form-group">
+          <label>Coordenadas (obligatorio si no hay zona)</label>
+          <div class="coords-control">
+            <input id="custom-lat" type="number" step="any" placeholder="Latitud" />
+            <input id="custom-lng" type="number" step="any" placeholder="Longitud" />
+          </div>
+          <small class="form-hint">Si se proporcionan, se usan como centro de búsqueda. Obligatorio si no se selecciona zona.</small>
         </div>
 
         <!-- Filtros de aliados -->
@@ -71,6 +81,28 @@
           <div class="filter-input-group">
             <input id="competitor-input" type="text" placeholder="Buscar categoría SCIAN…" />
             <ul id="competitor-suggestions" class="scian-suggestions hidden"></ul>
+          </div>
+        </div>
+
+        <!-- Categorías Google aliados -->
+        <div class="form-group">
+          <label>Aliados Google (opcional)</label>
+          <div id="google-ally-tags" class="tag-container"></div>
+          <div class="filter-input-group">
+            <select id="google-ally-select" class="google-category-select">
+              <option value="">Seleccionar categoría Google…</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Categorías Google competidores -->
+        <div class="form-group">
+          <label>Competidores Google (opcional)</label>
+          <div id="google-competitor-tags" class="tag-container"></div>
+          <div class="filter-input-group">
+            <select id="google-competitor-select" class="google-category-select">
+              <option value="">Seleccionar categoría Google…</option>
+            </select>
           </div>
         </div>
 
@@ -113,6 +145,12 @@
       <section id="recommendation-section" class="recommendation-section hidden">
         <h2>Recomendación</h2>
         <div id="recommendation-text" class="recommendation-text"></div>
+      </section>
+
+      <!-- Strategic recommendations section (hidden until analysis) -->
+      <section id="strategic-recommendations-section" class="strategic-recommendations-section hidden">
+        <h2>Recomendaciones Estratégicas</h2>
+        <ol id="strategic-recommendations-list" class="strategic-recommendations-list"></ol>
       </section>
 
       <!-- Export buttons (hidden until analysis) -->

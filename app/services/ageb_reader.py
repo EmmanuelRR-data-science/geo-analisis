@@ -55,7 +55,7 @@ class AGEBReader:
                     "  COALESCE(SUM(vph_cel), 0) AS sum_vph_cel, "
                     "  COALESCE(SUM(vph_pc), 0) AS sum_vph_pc "
                     "FROM ageb_demographics "
-                    "WHERE id = ANY(:ids)"
+                    "WHERE id = ANY(:ids) AND (mza = '000' OR mza IS NULL)"
                 )
                 row = conn.execute(query, {"ids": ageb_ids}).fetchone()
 
@@ -67,7 +67,9 @@ class AGEBReader:
             vivpar_hab = int(row.sum_vivpar_hab)
 
             def pct(numerator: int) -> float:
-                return round(numerator / vivpar_hab * 100, 2) if vivpar_hab > 0 else 0.0
+                if vivpar_hab <= 0:
+                    return 0.0
+                return min(100.0, round(numerator / vivpar_hab * 100, 1))
 
             return AGEBData(
                 total_population=total_pop,

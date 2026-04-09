@@ -203,7 +203,10 @@ function drawRadiusCircles(zone, radiusKm) {
   appState._outerRadiusKm = radiusKm;
   buildRingControl(radiusKm, innerDistances);
 
-  // Extend map bounds to include the outer circle
+  // Store center for later use (e.g., centering before export)
+  appState._searchCenter = [lat, lng];
+
+  // Center map on search center, fitting the outer circle
   map.fitBounds(appState._outerCircle.getBounds(), { padding: [40, 40] });
 }
 
@@ -349,6 +352,30 @@ function updateMarkerVisibility() {
 }
 
 /* ===== Legacy stubs for compatibility ===== */
-function renderAGEBLayers() {} // No-op: AGEB layers removed from map
+function renderAGEBLayers() {}
 function clearAGEBLayers() { clearRadiusElements(); }
 function drawRadiusCircle(zone, radiusKm) { drawRadiusCircles(zone, radiusKm); }
+
+/**
+ * Center the map on the search center and fit the outer circle.
+ * Disables animation so html2canvas captures the final state.
+ * Returns a Promise that resolves when the map is ready for capture.
+ */
+function centerMapForCapture() {
+  var map = appState.mapInstance;
+  if (!map) return;
+
+  // Disable animation for instant positioning
+  if (appState._outerCircle) {
+    map.fitBounds(appState._outerCircle.getBounds(), {
+      padding: [30, 30],
+      animate: false,
+      duration: 0,
+    });
+  } else if (appState._searchCenter) {
+    map.setView(appState._searchCenter, 14, { animate: false });
+  }
+
+  // Force Leaflet to recalculate layout
+  map.invalidateSize({ animate: false });
+}

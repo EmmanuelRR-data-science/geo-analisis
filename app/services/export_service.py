@@ -39,19 +39,25 @@ def _setup_pdf_font(pdf) -> str:
          "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
          "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
          "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"),
+        # Liberation Sans (some distros)
+        ("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+         "/usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf",
+         "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf"),
     ]
 
     for regular, bold, italic, bold_italic in font_candidates:
-        if _os.path.exists(regular):
-            try:
-                pdf.add_font("Uni", "", fname=regular)
-                pdf.add_font("Uni", "B", fname=bold)
-                pdf.add_font("Uni", "I", fname=italic)
-                pdf.add_font("Uni", "BI", fname=bold_italic)
-                _F = "Uni"
-                return _F
-            except Exception:
-                continue
+        if not all(_os.path.exists(p) for p in (regular, bold, italic, bold_italic)):
+            continue
+        try:
+            pdf.add_font("Uni", "", fname=regular)
+            pdf.add_font("Uni", "B", fname=bold)
+            pdf.add_font("Uni", "I", fname=italic)
+            pdf.add_font("Uni", "BI", fname=bold_italic)
+            _F = "Uni"
+            return _F
+        except Exception:
+            continue
 
     _F = "Helvetica"
     return _F
@@ -98,7 +104,7 @@ class ExportService:
 
         if category == "Recomendable":
             cr, cg, cb = 39, 174, 96
-        elif category == "Viable con reservas":
+        elif category == "Viable con enfoque estratégico":
             cr, cg, cb = 243, 156, 18
         else:
             cr, cg, cb = 231, 76, 60
@@ -253,6 +259,96 @@ class ExportService:
         pdf.multi_cell(0, 5.5, recommendation)
         pdf.ln(4)
 
+        # --- Recomendaciones Estratégicas ---
+        if result.strategic_recommendations:
+            _section(pdf, "Recomendaciones Estratégicas")
+            for idx, rec in enumerate(result.strategic_recommendations, 1):
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 10)
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(8, 6, f"{idx}.")
+                pdf.set_font(_F, "", 10)
+                pdf.set_text_color(60, 60, 60)
+                pdf.multi_cell(0, 5.5, _clean_text(rec))
+                pdf.ln(2)
+            pdf.ln(4)
+
+        # --- Gráficas de análisis de competidores ---
+        competitors = [b for b in result.businesses if b.classification == "competitor"]
+        if competitors:
+            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart
+
+            # Schedule opportunity chart
+            schedule_png = generate_schedule_opportunity_chart(competitors)
+            if schedule_png:
+                if pdf.get_y() > 140:
+                    pdf.add_page()
+                _section(pdf, "Oportunidad por Día de la Semana")
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                        tmp.write(schedule_png)
+                        tmp_path = tmp.name
+                    pdf.image(tmp_path, x=15, w=170)
+                    import os
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning("Could not embed schedule chart: %s", e)
+                pdf.ln(4)
+
+            # Ratings chart
+            ratings_png = generate_ratings_chart(competitors)
+            if ratings_png:
+                if pdf.get_y() > 140:
+                    pdf.add_page()
+                _section(pdf, "Análisis de Ratings de Competidores")
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                        tmp.write(ratings_png)
+                        tmp_path = tmp.name
+                    pdf.image(tmp_path, x=15, w=170)
+                    import os
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning("Could not embed ratings chart: %s", e)
+                pdf.ln(4)
+
+            # Price distribution chart
+            price_png = generate_price_chart(competitors)
+            if price_png:
+                if pdf.get_y() > 160:
+                    pdf.add_page()
+                _section(pdf, "Distribución de Precios de Competidores")
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                        tmp.write(price_png)
+                        tmp_path = tmp.name
+                    pdf.image(tmp_path, x=30, w=140)
+                    import os
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning("Could not embed price chart: %s", e)
+                pdf.ln(4)
+
+            # Top 5 complaints
+            complaints = extract_top_complaints(competitors, n=5)
+            if complaints:
+                if pdf.get_y() > 200:
+                    pdf.add_page()
+                _section(pdf, "Top 5 Quejas Más Comunes de Competidores")
+                for idx, complaint in enumerate(complaints, 1):
+                    if pdf.get_y() > 260:
+                        pdf.add_page()
+                    stars = "★" * complaint["rating"] + "☆" * (5 - complaint["rating"])
+                    pdf.set_font(_F, "B", 9)
+                    pdf.set_text_color(44, 62, 80)
+                    pdf.cell(0, 5, f"{idx}. {_clean_text(complaint['business_name'])} — {stars}", new_x="LMARGIN", new_y="NEXT")
+                    pdf.set_font(_F, "I", 8)
+                    pdf.set_text_color(100, 100, 100)
+                    pdf.multi_cell(0, 4.5, f'"{_clean_text(complaint["text"])}"')
+                    pdf.ln(2)
+                pdf.ln(4)
+
         # --- Mapa ---
         if map_image_bytes:
             if pdf.get_y() > 160:
@@ -307,7 +403,7 @@ class ExportService:
         summary_json = json.dumps({"score": score, "category": category, "competitors": competitors, "complementary": complementary, "population": population}, ensure_ascii=False)
         ageb_layers_json = json.dumps(ageb_layers_data if ageb_layers_data else {}, ensure_ascii=False)
 
-        cat_color = "#27ae60" if category == "Recomendable" else ("#f39c12" if category == "Viable con reservas" else "#e74c3c")
+        cat_color = "#27ae60" if category == "Recomendable" else ("#f39c12" if category == "Viable con enfoque estratégico" else "#e74c3c")
         esc = html_mod.escape
         layer_html = ('<div id="ring-control" class="hidden" style="position:absolute;top:10px;right:10px;z-index:1000;'
                       'background:#fff;padding:12px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.2);max-width:260px;font-size:13px">'

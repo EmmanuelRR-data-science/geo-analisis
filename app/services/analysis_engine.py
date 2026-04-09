@@ -133,7 +133,7 @@ class AnalysisEngine:
         if score >= 70:
             return "Recomendable"
         if score >= 40:
-            return "Viable con reservas"
+            return "Viable con enfoque estratégico"
         return "No recomendable"
 
     # ------------------------------------------------------------------

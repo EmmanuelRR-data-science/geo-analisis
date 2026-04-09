@@ -14,3 +14,4 @@ python-Levenshtein
 sqlalchemy
 psycopg2-binary
 geoalchemy2
+matplotlib
