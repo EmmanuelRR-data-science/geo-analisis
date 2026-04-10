@@ -144,6 +144,31 @@ class ExportService:
         _row(pdf, "Total de negocios analizados", str(len(result.businesses)))
         pdf.ln(4)
 
+        # --- Análisis Multi-Radio ---
+        if result.multi_radius_results:
+            _section(pdf, "Análisis Multi-Radio")
+            # Table header
+            pdf.set_font(_F, "B", 9)
+            pdf.set_text_color(44, 62, 80)
+            col_w = [25, 30, 35, 30, 35, 35]  # Radio, Comp, Compl, Pobl, Densidad, Actividad
+            headers = ["Radio", "Competidores", "Complementarios", "Población", "Densidad POI", "Actividad (%)"]
+            for i, h in enumerate(headers):
+                pdf.cell(col_w[i], 7, h, border=1, align="C")
+            pdf.ln()
+            # Table rows
+            pdf.set_font(_F, "", 9)
+            pdf.set_text_color(60, 60, 60)
+            for mr in result.multi_radius_results:
+                env = mr.environment_variables or {}
+                pdf.cell(col_w[0], 6, f"{mr.radius_km:.0f} km", border=1, align="C")
+                pdf.cell(col_w[1], 6, str(mr.competitors), border=1, align="C")
+                pdf.cell(col_w[2], 6, str(mr.complementary), border=1, align="C")
+                pdf.cell(col_w[3], 6, f"{mr.total_population:,}", border=1, align="C")
+                pdf.cell(col_w[4], 6, f"{env.get('poi_density', 0):.2f} /km²", border=1, align="C")
+                pdf.cell(col_w[5], 6, f"{env.get('commercial_activity_index', 0):.1f}%", border=1, align="C")
+                pdf.ln()
+            pdf.ln(4)
+
         # --- Detalle de negocios ---
         if result.businesses:
             _section(pdf, "Detalle de Negocios Encontrados")
@@ -237,6 +262,51 @@ class ExportService:
             if ageb.pct_with_car:
                 _row(pdf, "Con automóvil", f"{ageb.pct_with_car:.1f}%")
             pdf.ln(2)
+
+        # --- Variables de Entorno Ampliadas ---
+        ext = ageb.extended_indicators
+        if ext:
+            _section(pdf, "Variables de Entorno Ampliadas")
+            _sub(pdf, "Indicadores Socioeconómicos")
+            if ext.get("unemployment_rate") is not None:
+                _row(pdf, "Tasa de desempleo", f"{ext['unemployment_rate']:.1f}%")
+            if ext.get("economic_participation_rate") is not None:
+                _row(pdf, "Tasa de participación económica", f"{ext['economic_participation_rate']:.1f}%")
+            if ext.get("dependency_index") is not None:
+                _row(pdf, "Índice de dependencia", f"{ext['dependency_index']:.1f}%")
+            pdf.ln(2)
+            _sub(pdf, "Equipamiento de Vivienda")
+            if ext.get("pct_with_refrigerator") is not None:
+                _row(pdf, "Con refrigerador", f"{ext['pct_with_refrigerator']:.1f}%")
+            if ext.get("pct_with_washing_machine") is not None:
+                _row(pdf, "Con lavadora", f"{ext['pct_with_washing_machine']:.1f}%")
+            pdf.ln(2)
+            _sub(pdf, "Población por Rango de Edad")
+            if ext.get("population_12_plus"):
+                _row(pdf, "Población de 12 años y más", f"{ext['population_12_plus']:,}")
+            if ext.get("population_15_plus"):
+                _row(pdf, "Población de 15 años y más", f"{ext['population_15_plus']:,}")
+            if ext.get("population_18_plus"):
+                _row(pdf, "Población de 18 años y más", f"{ext['population_18_plus']:,}")
+            if ext.get("population_60_plus"):
+                _row(pdf, "Población de 60 años y más", f"{ext['population_60_plus']:,}")
+            if ext.get("household_population"):
+                _row(pdf, "Población en hogares", f"{ext['household_population']:,}")
+            pdf.ln(2)
+
+        # --- Actividad Comercial (from multi-radius) ---
+        if result.multi_radius_results:
+            main_mr = result.multi_radius_results[-1]  # largest radius
+            env = main_mr.environment_variables or {}
+            _sub(pdf, "Actividad Comercial")
+            _row(pdf, "Densidad POI", f"{env.get('poi_density', 0):.2f} negocios/km²")
+            _row(pdf, "Índice de actividad comercial", f"{env.get('commercial_activity_index', 0):.1f}%")
+            sectors = env.get("sector_concentration", [])
+            if sectors:
+                _sub(pdf, "Concentración Sectorial (Top 5)")
+                for s in sectors[:5]:
+                    _row(pdf, f"{s.get('sector', '')} ({s.get('code_2d', '')})", f"{s.get('count', 0)} negocios ({s.get('percentage', 0):.1f}%)")
+            pdf.ln(4)
 
         # --- Factores de viabilidad ---
         _section(pdf, "Desglose de Factores de Viabilidad")
@@ -403,6 +473,12 @@ class ExportService:
         summary_json = json.dumps({"score": score, "category": category, "competitors": competitors, "complementary": complementary, "population": population}, ensure_ascii=False)
         ageb_layers_json = json.dumps(ageb_layers_data if ageb_layers_data else {}, ensure_ascii=False)
 
+        multi_radius_json = json.dumps([
+            {"radius_km": mr.radius_km, "competitors": mr.competitors, "complementary": mr.complementary,
+             "total_population": mr.total_population, "environment_variables": mr.environment_variables}
+            for mr in result.multi_radius_results
+        ], ensure_ascii=False) if result.multi_radius_results else "[]"
+
         cat_color = "#27ae60" if category == "Recomendable" else ("#f39c12" if category == "Viable con enfoque estratégico" else "#e74c3c")
         esc = html_mod.escape
         layer_html = ('<div id="ring-control" class="hidden" style="position:absolute;top:10px;right:10px;z-index:1000;'
@@ -434,11 +510,12 @@ class ExportService:
 <div class="metric"><div class="value">{competitors}</div><div class="label">Competidores</div></div>
 <div class="metric"><div class="value">{complementary}</div><div class="label">Complementarios</div></div>
 <div class="metric"><div class="value">{population:,}</div><div class="label">Población</div></div></div>
+<div style="width:100%;margin-top:12px" id="mr-panel"></div>
 <div class="legend"><div class="item"><div class="dot" style="background:#22c55e"></div> Complementario</div><div class="item"><div class="dot" style="background:#ef4444"></div> Competidor</div></div>
 <div class="map-wrapper"><div id="map"></div>{layer_html}</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var B={businesses_json},Z={zone_json},S={summary_json},AL={ageb_layers_json};
+var B={businesses_json},Z={zone_json},S={summary_json},AL={ageb_layers_json},MR={multi_radius_json};
 function esc(t){{var d=document.createElement('div');d.textContent=t;return d.innerHTML}}
 function popup(b){{var h='<div style="max-width:300px;font-size:13px"><h3 style="margin:0 0 4px">'+esc(b.name)+'</h3><p style="margin:0 0 6px;color:#666">'+esc(b.category)+'</p>';
 var cl=b.classification==='complementary'?'Complementario':'Competidor';h+='<span class="popup-badge '+b.classification+'">'+cl+'</span> ';
@@ -513,6 +590,63 @@ if(rc&&rt){{
     lb.appendChild(cb);lb.appendChild(document.createTextNode(' '+d+' km'));rt.appendChild(lb);
   }});
   rc.classList.remove('hidden');
+}}
+
+// --- Multi-radius circles and panel ---
+var mrColors={{1:'#e74c3c',3:'#f39c12',5:'#8e44ad'}};
+var mrCircles={{}};
+if(MR&&MR.length){{
+  MR.forEach(function(mr){{
+    var col=mrColors[mr.radius_km]||'#3498db';
+    var c=L.circle([Z.center_lat,Z.center_lng],{{radius:mr.radius_km*1000,color:col,weight:2,fillColor:col,fillOpacity:.03,dashArray:'6 4'}}).addTo(map);
+    c.bindTooltip(mr.radius_km+' km',{{permanent:true,direction:'top',className:''}});
+    mrCircles[mr.radius_km]={{circle:c,visible:true}};
+  }});
+  // Add multi-radius toggles to ring control
+  if(rt){{
+    var sep=document.createElement('div');sep.style.cssText='margin:6px 0;border-top:1px solid #eee;padding-top:4px;font-size:11px;color:#888';sep.textContent='Anillos multi-radio';rt.appendChild(sep);
+    MR.forEach(function(mr){{
+      var col=mrColors[mr.radius_km]||'#3498db';
+      var lb=document.createElement('label');lb.className='layer-toggle';var cb=document.createElement('input');cb.type='checkbox';cb.checked=true;
+      cb.addEventListener('change',(function(rk){{return function(){{
+        var mc=mrCircles[rk];if(!mc)return;
+        if(this.checked){{mc.circle.addTo(map);mc.visible=true}}else{{map.removeLayer(mc.circle);mc.visible=false}}
+      }}}})(mr.radius_km));
+      lb.appendChild(cb);
+      var sp=document.createElement('span');sp.style.cssText='display:inline-block;width:10px;height:10px;border-radius:50%;background:'+col+';margin:0 4px';
+      lb.appendChild(sp);lb.appendChild(document.createTextNode(mr.radius_km+' km'));rt.appendChild(lb);
+    }});
+  }}
+  // Render comparison panel
+  var mp=document.getElementById('mr-panel');
+  if(mp){{
+    var t='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><tr style="background:#f8f9fa">';
+    t+='<th style="padding:6px 8px;text-align:left;border:1px solid #dee2e6">Radio</th>';
+    t+='<th style="padding:6px 8px;text-align:center;border:1px solid #dee2e6">Comp.</th>';
+    t+='<th style="padding:6px 8px;text-align:center;border:1px solid #dee2e6">Compl.</th>';
+    t+='<th style="padding:6px 8px;text-align:center;border:1px solid #dee2e6">Población</th>';
+    t+='<th style="padding:6px 8px;text-align:center;border:1px solid #dee2e6">Densidad POI</th>';
+    t+='<th style="padding:6px 8px;text-align:center;border:1px solid #dee2e6">Actividad (%)</th></tr>';
+    // Find best radius (lowest competitor ratio)
+    var bestIdx=-1,bestRatio=Infinity;
+    MR.forEach(function(mr,i){{var total=mr.competitors+mr.complementary;if(total>0){{var ratio=mr.competitors/total;if(ratio<bestRatio||(ratio===bestRatio&&mr.complementary>(MR[bestIdx]||{{}}).complementary)){{bestRatio=ratio;bestIdx=i}}}}}});
+    MR.forEach(function(mr,i){{
+      var env=mr.environment_variables||{{}};
+      var bg=i===bestIdx?'background:#eafaf1;':'';
+      var col=mrColors[mr.radius_km]||'#3498db';
+      t+='<tr style="'+bg+'">';
+      t+='<td style="padding:4px 8px;border:1px solid #dee2e6;font-weight:600"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+col+';margin-right:4px"></span>'+mr.radius_km+' km</td>';
+      t+='<td style="padding:4px 8px;text-align:center;border:1px solid #dee2e6">'+mr.competitors+'</td>';
+      t+='<td style="padding:4px 8px;text-align:center;border:1px solid #dee2e6">'+mr.complementary+'</td>';
+      t+='<td style="padding:4px 8px;text-align:center;border:1px solid #dee2e6">'+(mr.total_population||0).toLocaleString()+'</td>';
+      t+='<td style="padding:4px 8px;text-align:center;border:1px solid #dee2e6">'+(env.poi_density||0).toFixed(2)+' /km²</td>';
+      t+='<td style="padding:4px 8px;text-align:center;border:1px solid #dee2e6">'+(env.commercial_activity_index||0).toFixed(1)+'%</td>';
+      t+='</tr>';
+    }});
+    t+='</table>';
+    if(bestIdx>=0)t+='<div style="font-size:11px;color:#27ae60;margin-top:4px">★ Mejor radio: '+MR[bestIdx].radius_km+' km (menor competencia relativa)</div>';
+    mp.innerHTML='<div style="margin-top:8px"><strong style="font-size:14px;color:#2c3e50">Análisis Multi-Radio</strong>'+t+'</div>';
+  }}
 }}
 </script></body></html>"""
 

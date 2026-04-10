@@ -53,7 +53,14 @@ class AGEBReader:
                     "  COALESCE(SUM(vph_inter), 0) AS sum_vph_inter, "
                     "  COALESCE(SUM(vph_autom), 0) AS sum_vph_autom, "
                     "  COALESCE(SUM(vph_cel), 0) AS sum_vph_cel, "
-                    "  COALESCE(SUM(vph_pc), 0) AS sum_vph_pc "
+                    "  COALESCE(SUM(vph_pc), 0) AS sum_vph_pc, "
+                    "  COALESCE(SUM(p_12ymas), 0) AS sum_p_12ymas, "
+                    "  COALESCE(SUM(p_15ymas), 0) AS sum_p_15ymas, "
+                    "  COALESCE(SUM(p_18ymas), 0) AS sum_p_18ymas, "
+                    "  COALESCE(SUM(p_60ymas), 0) AS sum_p_60ymas, "
+                    "  COALESCE(SUM(pobhog), 0) AS sum_pobhog, "
+                    "  COALESCE(SUM(vph_refri), 0) AS sum_vph_refri, "
+                    "  COALESCE(SUM(vph_lavad), 0) AS sum_vph_lavad "
                     "FROM ageb_demographics "
                     "WHERE id = ANY(:ids) AND (mza = '000' OR mza IS NULL)"
                 )
@@ -71,19 +78,49 @@ class AGEBReader:
                     return 0.0
                 return min(100.0, round(numerator / vivpar_hab * 100, 1))
 
+            # Extract new AGEB variables
+            pea = int(row.sum_pea)
+            pdesocup = int(row.sum_pdesocup)
+            pob0_14 = int(row.sum_pob0_14)
+            pob15_64 = int(row.sum_pob15_64)
+            pob65_mas = int(row.sum_pob65_mas)
+            p_15ymas = int(row.sum_p_15ymas)
+            vph_refri = int(row.sum_vph_refri)
+            vph_lavad = int(row.sum_vph_lavad)
+
+            # Calculate derived indicators with division-by-zero protection
+            unemployment_rate = round(pdesocup / pea * 100, 1) if pea > 0 else 0.0
+            economic_participation_rate = round(pea / p_15ymas * 100, 1) if p_15ymas > 0 else 0.0
+            dependency_index = round((pob0_14 + pob65_mas) / pob15_64 * 100, 1) if pob15_64 > 0 else 0.0
+            pct_with_refrigerator = min(100.0, round(vph_refri / vivpar_hab * 100, 1)) if vivpar_hab > 0 else 0.0
+            pct_with_washing_machine = min(100.0, round(vph_lavad / vivpar_hab * 100, 1)) if vivpar_hab > 0 else 0.0
+
+            extended_indicators = {
+                "unemployment_rate": unemployment_rate,
+                "economic_participation_rate": economic_participation_rate,
+                "dependency_index": dependency_index,
+                "pct_with_refrigerator": pct_with_refrigerator,
+                "pct_with_washing_machine": pct_with_washing_machine,
+                "population_12_plus": int(row.sum_p_12ymas),
+                "population_15_plus": p_15ymas,
+                "population_18_plus": int(row.sum_p_18ymas),
+                "population_60_plus": int(row.sum_p_60ymas),
+                "household_population": int(row.sum_pobhog),
+            }
+
             return AGEBData(
                 total_population=total_pop,
                 population_density=round(total_pop / (cnt * 0.25), 2) if cnt > 0 else 0,
-                economically_active_population=int(row.sum_pea),
+                economically_active_population=pea,
                 socioeconomic_level=self._classify_nse(float(row.avg_graproes)),
                 ageb_count=cnt,
                 female_population=int(row.sum_pobfem),
                 male_population=int(row.sum_pobmas),
-                population_0_14=int(row.sum_pob0_14),
-                population_15_64=int(row.sum_pob15_64),
-                population_65_plus=int(row.sum_pob65_mas),
+                population_0_14=pob0_14,
+                population_15_64=pob15_64,
+                population_65_plus=pob65_mas,
                 occupied_population=int(row.sum_pocupada),
-                unemployed_population=int(row.sum_pdesocup),
+                unemployed_population=pdesocup,
                 inactive_population=int(row.sum_pe_inac),
                 avg_schooling_years=round(float(row.avg_graproes), 1),
                 total_households=int(row.sum_tothog),
@@ -99,6 +136,7 @@ class AGEBReader:
                 pct_with_cellphone=pct(int(row.sum_vph_cel)),
                 pct_with_computer=pct(int(row.sum_vph_pc)),
                 raw_indicators={},
+                extended_indicators=extended_indicators,
             )
         except Exception as e:
             logger.error(f"Database query failed: {e}")

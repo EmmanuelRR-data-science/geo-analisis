@@ -232,9 +232,64 @@ function clearRadiusElements() {
     appState._innerRings = {};
   }
 
+  // Clear multi-radius circles
+  if (appState._multiRadiusCircles) {
+    appState._multiRadiusCircles.forEach(function(item) {
+      if (item.circle) map.removeLayer(item.circle);
+      if (item.label) map.removeLayer(item.label);
+    });
+    appState._multiRadiusCircles = [];
+  }
+
   // Hide ring control
   var ctrl = document.getElementById('ring-control');
   if (ctrl) ctrl.classList.add('hidden');
+}
+
+/**
+ * Draw 3 fixed analysis circles at 1km, 3km, 5km with different colors.
+ * These are SEPARATE from the user's radius circles.
+ */
+function drawMultiRadiusCircles(zone) {
+  var map = appState.mapInstance;
+  if (!map || !zone) return;
+
+  var lat = zone.center_lat;
+  var lng = zone.center_lng;
+  if (lat == null || lng == null) return;
+
+  // Clear previous multi-radius circles
+  if (appState._multiRadiusCircles) {
+    appState._multiRadiusCircles.forEach(function(item) {
+      if (item.circle) map.removeLayer(item.circle);
+      if (item.label) map.removeLayer(item.label);
+    });
+  }
+  appState._multiRadiusCircles = [];
+
+  var radii = [
+    { km: 1, color: '#8b5cf6' },  // purple
+    { km: 3, color: '#06b6d4' },  // cyan
+    { km: 5, color: '#f97316' },  // orange
+  ];
+
+  radii.forEach(function(r) {
+    var circle = L.circle([lat, lng], {
+      radius: r.km * 1000,
+      color: r.color,
+      weight: 2,
+      fillColor: r.color,
+      fillOpacity: 0.02,
+      dashArray: '6 3',
+    }).addTo(map);
+
+    var label = L.tooltip({ permanent: true, direction: 'right', className: 'ring-label multi-radius-label' })
+      .setLatLng([lat, lng + (r.km * 0.009)])
+      .setContent(r.km + ' km (análisis)');
+    label.addTo(map);
+
+    appState._multiRadiusCircles.push({ circle: circle, label: label, km: r.km, visible: true });
+  });
 }
 
 /**

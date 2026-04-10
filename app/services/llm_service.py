@@ -246,16 +246,22 @@ class LLMService:
             comp = user_filters.get("competitor_filters", [])
             google_ally = user_filters.get("google_ally_categories", [])
             google_comp = user_filters.get("google_competitor_categories", [])
-            if ally or comp or google_ally or google_comp:
+            kw_ally = user_filters.get("keyword_ally", [])
+            kw_comp = user_filters.get("keyword_competitor", [])
+            if ally or comp or google_ally or google_comp or kw_ally or kw_comp:
                 prompt += "⚠️ REGLAS OBLIGATORIAS DEL USUARIO:\n"
                 if comp:
                     prompt += f"- Negocios tipo [{', '.join(comp)}] son SIEMPRE competidores (X)\n"
                 if ally:
                     prompt += f"- Negocios tipo [{', '.join(ally)}] son SIEMPRE complementarios (C)\n"
                 if google_comp:
-                    prompt += f"- Negocios con categoría Google [{', '.join(google_comp)}] son SIEMPRE competidores (X) con relevancia alta\n"
+                    prompt += f"- Negocios con categoría Google [{', '.join(google_comp)}] son SIEMPRE competidores (X)\n"
                 if google_ally:
-                    prompt += f"- Negocios con categoría Google [{', '.join(google_ally)}] son SIEMPRE complementarios (C) con relevancia alta\n"
+                    prompt += f"- Negocios con categoría Google [{', '.join(google_ally)}] son SIEMPRE complementarios (C)\n"
+                if kw_comp:
+                    prompt += f"- Si el nombre, categoría o reseñas del negocio contienen las palabras [{', '.join(kw_comp)}], clasifícalo como competidor (X)\n"
+                if kw_ally:
+                    prompt += f"- Si el nombre, categoría o reseñas del negocio contienen las palabras [{', '.join(kw_ally)}], clasifícalo como complementario (C)\n"
                 prompt += "Estas reglas tienen PRIORIDAD ABSOLUTA sobre tu criterio.\n\n"
 
         prompt += (
@@ -345,6 +351,13 @@ class LLMService:
             for cat in user_filters.get("google_ally_categories", []):
                 google_ally_cats.add(str(cat).lower())
 
+        # Semantic keyword sets (search in name + category + reviews + editorial)
+        kw_comp_list: list[str] = []
+        kw_ally_list: list[str] = []
+        if user_filters:
+            kw_comp_list = [str(k).lower() for k in user_filters.get("keyword_competitor", []) if k]
+            kw_ally_list = [str(k).lower() for k in user_filters.get("keyword_ally", []) if k]
+
         # Keywords from user's business for competitor detection
         user_keywords = set()
         for w in (user_desc + " " + user_input).split():
@@ -355,8 +368,14 @@ class LLMService:
         for b in businesses:
             biz_code = b.denue_scian_code or ""
             biz_text = (b.name + " " + b.category).lower()
+            # Build extended text including reviews and editorial for keyword search
+            biz_extended = biz_text
+            if b.google_reviews:
+                biz_extended += " " + " ".join(r.text.lower() for r in b.google_reviews)
+            if b.google_editorial_summary:
+                biz_extended += " " + b.google_editorial_summary.lower()
             biz_words = {w for w in biz_text.split() if len(w) > 2}
-            classification = "complementary"  # Default: assume complementary (better than unclassified)
+            classification = "complementary"
             relevance = "low"
 
             # Collect business google_types as lowercase set
@@ -364,11 +383,18 @@ class LLMService:
             if b.google_types:
                 biz_google_types = {t.lower() for t in b.google_types}
 
-            # 0. Google categories (HIGHEST priority — user explicit selection)
+            # 0. Google categories (HIGHEST priority)
             if google_comp_cats and (google_comp_cats & biz_google_types):
                 classification = "competitor"
                 relevance = "high"
             elif google_ally_cats and (google_ally_cats & biz_google_types):
+                classification = "complementary"
+                relevance = "high"
+            # 0.5. Semantic keywords (search in extended text: name + category + reviews + editorial)
+            elif kw_comp_list and any(kw in biz_extended for kw in kw_comp_list):
+                classification = "competitor"
+                relevance = "high"
+            elif kw_ally_list and any(kw in biz_extended for kw in kw_ally_list):
                 classification = "complementary"
                 relevance = "high"
             # 1. User text filters (high priority)
@@ -487,6 +513,18 @@ class LLMService:
                 if comp:
                     prompt += f"- Considera como competidores: {', '.join(comp)}\n"
                 prompt += "Incluye esta información en tu análisis.\n\n"
+
+        if analysis_data.multi_radius_results:
+            prompt += "\nAnálisis multi-radio:\n"
+            for mr in analysis_data.multi_radius_results:
+                env = mr.environment_variables
+                prompt += (
+                    f"- A {mr.radius_km:.0f} km: {mr.competitors} competidores, "
+                    f"{mr.complementary} complementarios, "
+                    f"densidad POI: {env.get('poi_density', 0):.2f} negocios/km², "
+                    f"actividad comercial: {env.get('commercial_activity_index', 0):.1f}%\n"
+                )
+            prompt += "Menciona cómo varían las condiciones a diferentes distancias si hay diferencias significativas.\n"
 
         prompt += (
             "El texto debe:\n"
@@ -655,6 +693,25 @@ class LLMService:
                 prompt += f"Categorías Google competidoras: {', '.join(google_comp)}\n"
             if google_ally:
                 prompt += f"Categorías Google aliadas: {', '.join(google_ally)}\n"
+
+        ext = analysis_data.ageb_data.extended_indicators
+        if ext:
+            prompt += "\nINDICADORES SOCIOECONÓMICOS ADICIONALES:\n"
+            if ext.get("unemployment_rate"):
+                prompt += f"- Tasa de desempleo: {ext['unemployment_rate']:.1f}%\n"
+            if ext.get("economic_participation_rate"):
+                prompt += f"- Tasa de participación económica: {ext['economic_participation_rate']:.1f}%\n"
+            if ext.get("dependency_index"):
+                prompt += f"- Índice de dependencia: {ext['dependency_index']:.1f}%\n"
+            if ext.get("pct_with_refrigerator"):
+                prompt += f"- Viviendas con refrigerador: {ext['pct_with_refrigerator']:.1f}%\n"
+            if ext.get("pct_with_washing_machine"):
+                prompt += f"- Viviendas con lavadora: {ext['pct_with_washing_machine']:.1f}%\n"
+
+        if analysis_data.multi_radius_results:
+            prompt += "\nANÁLISIS MULTI-RADIO:\n"
+            for mr in analysis_data.multi_radius_results:
+                prompt += f"- A {mr.radius_km:.0f} km: {mr.competitors} competidores, {mr.complementary} complementarios\n"
 
         prompt += (
             "\nGenera entre 3 y 7 recomendaciones estratégicas ACCIONABLES. Cada recomendación debe:\n"

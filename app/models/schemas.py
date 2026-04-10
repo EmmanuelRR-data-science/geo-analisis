@@ -116,6 +116,17 @@ class AGEBData(BaseModel):
     pct_with_cellphone: float = 0.0
     pct_with_computer: float = 0.0
     raw_indicators: dict
+    extended_indicators: dict = {}
+
+
+class MultiRadiusResult(BaseModel):
+    """Result of analysis at a specific predefined radius (1, 3, or 5 km)."""
+
+    radius_km: float
+    competitors: int
+    complementary: int
+    total_population: int
+    environment_variables: dict  # poi_density, commercial_activity_index, sector_concentration
 
 
 class ViabilityResult(BaseModel):
@@ -154,6 +165,7 @@ class AnalysisResult(BaseModel):
     warnings: list[str]
     timestamp: str
     strategic_recommendations: list[str] = []
+    multi_radius_results: list[MultiRadiusResult] = []
 
 
 class APIError(BaseModel):

@@ -13,13 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.models.schemas import AnalysisResult, APIError
+from app.models.schemas import AnalysisResult, APIError, MultiRadiusResult
 from app.services.ageb_reader import AGEBReader
 from app.services.data_service import DataService
 from app.services.llm_service import LLMService
 from app.services.zone_service import ZoneService
 from app.services.export_service import ExportService
 from app.services.analysis_engine import AnalysisEngine
+from app.services.environment_calculator import EnvironmentCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +91,23 @@ async def analyze(request: Request):
     google_ally_categories = body.get("google_ally_categories", []) or []
     google_competitor_categories = body.get("google_competitor_categories", []) or []
 
+    # Semantic keywords (free text, comma-separated)
+    keyword_ally = body.get("keyword_ally", "") or ""
+    keyword_competitor = body.get("keyword_competitor", "") or ""
+    keyword_ally_list = [w.strip().lower() for w in keyword_ally.split(",") if w.strip()]
+    keyword_competitor_list = [w.strip().lower() for w in keyword_competitor.split(",") if w.strip()]
+
     ally_filters = body.get("ally_filters", []) or []
     competitor_filters = body.get("competitor_filters", []) or []
     user_filters = None
-    if ally_filters or competitor_filters or google_ally_categories or google_competitor_categories:
+    if ally_filters or competitor_filters or google_ally_categories or google_competitor_categories or keyword_ally_list or keyword_competitor_list:
         user_filters = {
             "ally_filters": ally_filters,
             "competitor_filters": competitor_filters,
             "google_ally_categories": google_ally_categories,
             "google_competitor_categories": google_competitor_categories,
+            "keyword_ally": keyword_ally_list,
+            "keyword_competitor": keyword_competitor_list,
         }
 
     # Validate coordinates if provided
@@ -215,6 +224,38 @@ async def analyze(request: Request):
     classified = await llm_service.classify_businesses(interpretation, businesses, user_filters=user_filters)
     viability = analysis_engine.calculate_viability(classified, ageb_data)
 
+    # Multi-radius analysis (1km, 3km, 5km)
+    multi_radii_km = [1, 3, 5]
+    multi_radii_m = [1000, 3000, 5000]
+
+    multi_search_tasks = [
+        data_service.get_businesses_in_zone(zone, temp_interp, radius_m=r)
+        for r in multi_radii_m
+    ]
+    multi_search_results = await asyncio.gather(*multi_search_tasks, return_exceptions=True)
+
+    multi_radius_results = []
+    for r_km, r_result in zip(multi_radii_km, multi_search_results):
+        if isinstance(r_result, Exception):
+            warnings.append(f"No se pudo completar el análisis a {r_km} km: {r_result}")
+            continue
+        try:
+            mr_businesses, mr_warnings = r_result
+            # Classify using fallback only (avoid extra LLM calls for rate limit)
+            mr_classified = llm_service._fallback_classify_businesses(interpretation, mr_businesses, user_filters)
+            mr_competitors = sum(1 for b in mr_classified if b.classification == "competitor")
+            mr_complementary = sum(1 for b in mr_classified if b.classification == "complementary")
+            mr_env_vars = EnvironmentCalculator.calculate_all(mr_classified, r_km)
+            multi_radius_results.append(MultiRadiusResult(
+                radius_km=r_km,
+                competitors=mr_competitors,
+                complementary=mr_complementary,
+                total_population=ageb_data.total_population,
+                environment_variables=mr_env_vars,
+            ))
+        except Exception as e:
+            warnings.append(f"Error procesando radio {r_km} km: {e}")
+
     result = AnalysisResult(
         analysis_id=str(uuid.uuid4()),
         business_type=interpretation,
@@ -225,6 +266,7 @@ async def analyze(request: Request):
         recommendation_text="",
         warnings=warnings,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        multi_radius_results=multi_radius_results,
     )
 
     # Step 4: Generate recommendation (uses big model)

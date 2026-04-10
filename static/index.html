@@ -106,6 +106,19 @@
           </div>
         </div>
 
+        <!-- Palabras clave semánticas -->
+        <div class="form-group">
+          <label>Palabras clave aliados (opcional)</label>
+          <input id="keyword-ally" type="text" placeholder="Ej. bebés, maternidad, infantil" />
+          <small class="form-hint">Palabras o frases separadas por comas. Se buscan en nombre, categoría y reseñas.</small>
+        </div>
+
+        <div class="form-group">
+          <label>Palabras clave competidores (opcional)</label>
+          <input id="keyword-competitor" type="text" placeholder="Ej. ropa, moda, textil" />
+          <small class="form-hint">Palabras o frases separadas por comas. Se buscan en nombre, categoría y reseñas.</small>
+        </div>
+
         <div id="form-errors" class="message-box error-box hidden"></div>
 
         <button id="submit-btn" type="submit" class="btn btn-primary">Analizar viabilidad</button>
@@ -151,6 +164,18 @@
       <section id="strategic-recommendations-section" class="strategic-recommendations-section hidden">
         <h2>Recomendaciones Estratégicas</h2>
         <ol id="strategic-recommendations-list" class="strategic-recommendations-list"></ol>
+      </section>
+
+      <!-- Multi-radius comparison panel -->
+      <section id="multi-radius-panel" class="multi-radius-panel hidden">
+        <h2>Comparación Multi-Radio</h2>
+        <div id="multi-radius-table" class="multi-radius-table"></div>
+      </section>
+
+      <!-- Environment variables section -->
+      <section id="environment-vars-section" class="environment-vars-section hidden">
+        <h2>Variables de Entorno</h2>
+        <div id="environment-vars-content"></div>
       </section>
 
       <!-- Export buttons (hidden until analysis) -->

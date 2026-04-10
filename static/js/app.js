@@ -439,6 +439,8 @@ dom.form.addEventListener('submit', function (e) {
     competitor_filters: appState.competitorFilters,
     google_ally_categories: appState.googleAllyCategories,
     google_competitor_categories: appState.googleCompetitorCategories,
+    keyword_ally: document.getElementById('keyword-ally').value.trim(),
+    keyword_competitor: document.getElementById('keyword-competitor').value.trim(),
   };
 
   if (hasCoords) {
@@ -476,6 +478,119 @@ dom.form.addEventListener('submit', function (e) {
       console.error(err);
     });
 });
+
+/* ===== Multi-radius panel ===== */
+function renderMultiRadiusPanel(multiRadiusResults) {
+  var panel = document.getElementById('multi-radius-panel');
+  var table = document.getElementById('multi-radius-table');
+  if (!panel || !table || !multiRadiusResults || multiRadiusResults.length === 0) {
+    if (panel) panel.classList.add('hidden');
+    return;
+  }
+
+  // Find best radius (lowest competitor ratio)
+  var bestIdx = -1;
+  var bestRatio = Infinity;
+  multiRadiusResults.forEach(function(mr, idx) {
+    var total = mr.competitors + mr.complementary;
+    var ratio = total > 0 ? mr.competitors / total : 0;
+    if (ratio < bestRatio || (ratio === bestRatio && mr.complementary > (multiRadiusResults[bestIdx] || {}).complementary)) {
+      bestRatio = ratio;
+      bestIdx = idx;
+    }
+  });
+
+  var html = '<table class="comparison-table"><thead><tr><th>Indicador</th>';
+  multiRadiusResults.forEach(function(mr) {
+    html += '<th>' + mr.radius_km + ' km</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  // Rows
+  var rows = [
+    { label: 'Competidores', key: 'competitors' },
+    { label: 'Complementarios', key: 'complementary' },
+    { label: 'Población', key: 'total_population' },
+    { label: 'Densidad POI', key: 'poi_density', fromEnv: true, format: 'density' },
+    { label: 'Actividad comercial', key: 'commercial_activity_index', fromEnv: true, format: 'pct' },
+  ];
+
+  rows.forEach(function(row) {
+    html += '<tr><td>' + row.label + '</td>';
+    multiRadiusResults.forEach(function(mr, idx) {
+      var val;
+      if (row.fromEnv) {
+        val = mr.environment_variables ? mr.environment_variables[row.key] : null;
+      } else {
+        val = mr[row.key];
+      }
+      var cls = idx === bestIdx ? ' class="best-radius"' : '';
+      if (val == null) {
+        html += '<td' + cls + '>Sin datos</td>';
+      } else if (row.format === 'density') {
+        html += '<td' + cls + '>' + val.toFixed(2) + ' /km²</td>';
+      } else if (row.format === 'pct') {
+        html += '<td' + cls + '>' + val.toFixed(1) + '%</td>';
+      } else {
+        html += '<td' + cls + '>' + formatNumber(val) + '</td>';
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  table.innerHTML = html;
+  panel.classList.remove('hidden');
+}
+
+/* ===== Environment variables section ===== */
+function renderEnvironmentVars(multiRadiusResults, extendedIndicators) {
+  var section = document.getElementById('environment-vars-section');
+  var content = document.getElementById('environment-vars-content');
+  if (!section || !content) return;
+
+  var html = '';
+
+  // Commercial activity subsection (from multi-radius, use the largest radius available)
+  var mainMr = null;
+  if (multiRadiusResults && multiRadiusResults.length > 0) {
+    mainMr = multiRadiusResults[multiRadiusResults.length - 1]; // largest radius
+  }
+  if (mainMr && mainMr.environment_variables) {
+    var env = mainMr.environment_variables;
+    html += '<h3>Actividad Comercial</h3><div class="env-vars-grid">';
+    html += '<div class="env-var"><span class="env-label">Densidad POI</span><span class="env-value">' + (env.poi_density || 0).toFixed(2) + ' /km²</span></div>';
+    html += '<div class="env-var"><span class="env-label">Índice de actividad comercial</span><span class="env-value">' + (env.commercial_activity_index || 0).toFixed(1) + '%</span></div>';
+    // Top sectors
+    if (env.sector_concentration && env.sector_concentration.length > 0) {
+      html += '<div class="env-var full-width"><span class="env-label">Concentración sectorial (top 5)</span><ul class="sector-list">';
+      env.sector_concentration.slice(0, 5).forEach(function(s) {
+        html += '<li>' + escapeHtml(s.sector) + ' (' + s.code_2d + '): ' + s.count + ' negocios (' + s.percentage.toFixed(1) + '%)</li>';
+      });
+      html += '</ul></div>';
+    }
+    html += '</div>';
+  }
+
+  // Extended demographic indicators
+  if (extendedIndicators && Object.keys(extendedIndicators).length > 0) {
+    var ei = extendedIndicators;
+    html += '<h3>Perfil Demográfico Ampliado</h3><div class="env-vars-grid">';
+    if (ei.unemployment_rate != null) html += '<div class="env-var"><span class="env-label">Tasa de desempleo</span><span class="env-value">' + ei.unemployment_rate.toFixed(1) + '%</span></div>';
+    if (ei.economic_participation_rate != null) html += '<div class="env-var"><span class="env-label">Participación económica</span><span class="env-value">' + ei.economic_participation_rate.toFixed(1) + '%</span></div>';
+    if (ei.dependency_index != null) html += '<div class="env-var"><span class="env-label">Índice de dependencia</span><span class="env-value">' + ei.dependency_index.toFixed(1) + '%</span></div>';
+    if (ei.pct_with_refrigerator != null) html += '<div class="env-var"><span class="env-label">Viviendas con refrigerador</span><span class="env-value">' + ei.pct_with_refrigerator.toFixed(1) + '%</span></div>';
+    if (ei.pct_with_washing_machine != null) html += '<div class="env-var"><span class="env-label">Viviendas con lavadora</span><span class="env-value">' + ei.pct_with_washing_machine.toFixed(1) + '%</span></div>';
+    html += '</div>';
+  }
+
+  if (html) {
+    content.innerHTML = html;
+    section.classList.remove('hidden');
+  } else {
+    section.classList.add('hidden');
+  }
+}
 
 /* ===== Render results ===== */
 function renderResults(data) {
@@ -520,6 +635,12 @@ function renderResults(data) {
     dom.strategicRecommendationsSection.classList.add('hidden');
   }
 
+  // Multi-radius panel
+  renderMultiRadiusPanel(data.multi_radius_results);
+
+  // Environment variables
+  renderEnvironmentVars(data.multi_radius_results, data.ageb_data.extended_indicators);
+
   // Export & new analysis buttons
   dom.exportButtons.classList.remove('hidden');
   dom.btnNewAnalysis.classList.remove('hidden');
@@ -530,6 +651,9 @@ function renderResults(data) {
   // Draw radius circle
   var radiusKm = clampRadius(dom.radiusSlider.value);
   drawRadiusCircle(data.zone, radiusKm);
+
+  // Draw multi-radius circles (1, 3, 5 km)
+  drawMultiRadiusCircles(data.zone);
 }
 
 function getColorClass(category) {
@@ -548,6 +672,8 @@ dom.btnNewAnalysis.addEventListener('click', function () {
   dom.exportButtons.classList.add('hidden');
   dom.btnNewAnalysis.classList.add('hidden');
   dom.warningsArea.classList.add('hidden');
+  document.getElementById('multi-radius-panel').classList.add('hidden');
+  document.getElementById('environment-vars-section').classList.add('hidden');
   hideError();
 
   // Clear radius elements
