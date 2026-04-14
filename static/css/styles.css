@@ -525,3 +525,38 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 .env-value { font-weight: 600; color: #1e293b; }
 .sector-list { margin: 4px 0 0 16px; font-size: 12px; color: #475569; }
 .sector-list li { margin-bottom: 2px; }
+
+/* ===== Target market ===== */
+.target-market-section, .competitor-value-section, .target-insights-section { margin-top: 16px; }
+.target-market-section h2, .competitor-value-section h2, .target-insights-section h2 { font-size: 16px; margin-bottom: 8px; color: #2c3e50; }
+.target-profile-desc { font-size: 13px; color: #64748b; margin-bottom: 8px; font-style: italic; }
+.match-bar-container { display: flex; align-items: center; gap: 8px; height: 24px; background: #f1f5f9; border-radius: 12px; overflow: hidden; margin-bottom: 6px; }
+.match-bar { height: 100%; border-radius: 12px; transition: width 0.5s; }
+.match-bar.green { background: #22c55e; }
+.match-bar.amber { background: #f59e0b; }
+.match-bar.red { background: #ef4444; }
+.match-pct { font-weight: 700; font-size: 14px; min-width: 50px; }
+.match-pop { font-size: 13px; color: #475569; }
+.match-breakdown { display: flex; gap: 12px; font-size: 12px; color: #64748b; margin-top: 4px; }
+.value-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.value-item { padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+.value-item.positive { background: #f0fdf4; border-left: 3px solid #22c55e; }
+.value-item.opportunity { background: #fffbeb; border-left: 3px solid #f59e0b; }
+.value-item strong { display: block; margin-bottom: 4px; color: #1e293b; }
+.value-item p { color: #475569; margin: 0; }
+.value-item .recommendation { color: #92400e; font-style: italic; margin-top: 4px; }
+.insights-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.insight-item { padding: 10px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 6px; font-size: 13px; }
+.insight-item strong { display: block; margin-bottom: 4px; color: #1e40af; }
+.insight-item p { color: #475569; margin: 0; }
+
+/* ===== Comparison ===== */
+.comparison-buttons { display: flex; gap: 10px; margin-top: 8px; }
+.comparison-buttons .btn { flex: 1; position: relative; }
+.saved-badge { background: #3b82f6; color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 11px; margin-left: 4px; }
+.comparison-view { margin-top: 16px; }
+.comparison-view h2 { font-size: 16px; margin-bottom: 12px; color: #2c3e50; }
+.comparison-table td.best-score { background: #dcfce7; font-weight: 600; }
+.comparison-table .delete-btn { cursor: pointer; color: #ef4444; border: none; background: none; font-size: 14px; }
+textarea#target-profile { width: 100%; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius); font-size: .9rem; font-family: inherit; resize: vertical; }
+textarea#target-profile:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }

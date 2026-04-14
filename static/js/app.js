@@ -443,6 +443,8 @@ dom.form.addEventListener('submit', function (e) {
     keyword_competitor: document.getElementById('keyword-competitor').value.trim(),
   };
 
+  payload.target_profile = document.getElementById('target-profile').value.trim();
+
   if (hasCoords) {
     payload.custom_lat = parseFloat(customLat);
     payload.custom_lng = parseFloat(customLng);
@@ -645,6 +647,15 @@ function renderResults(data) {
   dom.exportButtons.classList.remove('hidden');
   dom.btnNewAnalysis.classList.remove('hidden');
 
+  // Target market sections
+  renderTargetMarket(data);
+  renderCompetitorValue(data);
+  renderTargetInsights(data);
+
+  // Comparison buttons
+  document.getElementById('comparison-buttons').classList.remove('hidden');
+  updateSavedBadge();
+
   // Render map
   renderBusinesses(data.businesses, data.zone);
 
@@ -674,6 +685,11 @@ dom.btnNewAnalysis.addEventListener('click', function () {
   dom.warningsArea.classList.add('hidden');
   document.getElementById('multi-radius-panel').classList.add('hidden');
   document.getElementById('environment-vars-section').classList.add('hidden');
+  document.getElementById('target-market-section').classList.add('hidden');
+  document.getElementById('competitor-value-section').classList.add('hidden');
+  document.getElementById('target-insights-section').classList.add('hidden');
+  document.getElementById('comparison-buttons').classList.add('hidden');
+  document.getElementById('comparison-view').classList.add('hidden');
   hideError();
 
   // Clear radius elements
@@ -729,6 +745,191 @@ dom.btnExportHtml.addEventListener('click', function () {
       btn.textContent = 'Descargar Mapa (HTML)';
     });
 });
+
+/* ===== Target market rendering ===== */
+function renderTargetMarket(data) {
+  var section = document.getElementById('target-market-section');
+  var content = document.getElementById('target-market-content');
+  if (!section || !content || data.target_match_percentage == null) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  var pct = data.target_match_percentage;
+  var pop = data.target_match_population || 0;
+  var colorClass = pct >= 30 ? 'green' : (pct >= 15 ? 'amber' : 'red');
+  var html = '<div class="target-profile-desc">' + escapeHtml(data.target_profile || '') + '</div>';
+  html += '<div class="match-bar-container"><div class="match-bar ' + colorClass + '" style="width:' + Math.min(pct, 100) + '%"></div><span class="match-pct">' + pct.toFixed(1) + '%</span></div>';
+  html += '<p class="match-pop">Población estimada: <strong>' + formatNumber(pop) + '</strong> personas</p>';
+  if (data.target_match_breakdown) {
+    var bd = data.target_match_breakdown;
+    html += '<div class="match-breakdown"><span>Género: ' + (bd.gender_factor * 100).toFixed(0) + '%</span><span>Edad: ' + (bd.age_factor * 100).toFixed(0) + '%</span><span>NSE: ' + (bd.socioeconomic_factor * 100).toFixed(0) + '%</span></div>';
+  }
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+function renderCompetitorValue(data) {
+  var section = document.getElementById('competitor-value-section');
+  var content = document.getElementById('competitor-value-content');
+  if (!section || !content) return;
+  var vps = data.competitor_value_points;
+  var ios = data.competitor_improvement_opportunities;
+  if ((!vps || !vps.length) && (!ios || !ios.length)) { section.classList.add('hidden'); return; }
+  var html = '';
+  if (vps && vps.length) {
+    html += '<h3>✅ Lo que valoran los clientes</h3><ul class="value-list">';
+    vps.forEach(function(vp) { html += '<li class="value-item positive"><strong>' + escapeHtml(vp.title) + '</strong><p>' + escapeHtml(vp.description) + '</p></li>'; });
+    html += '</ul>';
+  }
+  if (ios && ios.length) {
+    html += '<h3>⚡ Oportunidades de mejora</h3><ul class="value-list">';
+    ios.forEach(function(io) { html += '<li class="value-item opportunity"><strong>' + escapeHtml(io.issue) + '</strong><p class="recommendation">💡 ' + escapeHtml(io.recommendation) + '</p></li>'; });
+    html += '</ul>';
+  }
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+function renderTargetInsights(data) {
+  var section = document.getElementById('target-insights-section');
+  var content = document.getElementById('target-insights-content');
+  if (!section || !content || !data.target_customer_insights || !data.target_customer_insights.length) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  var html = '<ul class="insights-list">';
+  data.target_customer_insights.forEach(function(insight) {
+    html += '<li class="insight-item"><strong>' + escapeHtml(insight.title) + '</strong><p>' + escapeHtml(insight.explanation) + '</p></li>';
+  });
+  html += '</ul>';
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+/* ===== Comparison: localStorage save/manage ===== */
+var STORAGE_KEY = 'geoanalisis_saved';
+var MAX_SAVED = 10;
+
+function getSavedAnalyses() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch(e) { localStorage.setItem(STORAGE_KEY, '[]'); return []; }
+}
+
+function saveAnalysis() {
+  var data = appState.analysisResult;
+  if (!data) return;
+  var saved = getSavedAnalyses();
+  if (saved.length >= MAX_SAVED) { alert('Has alcanzado el límite de 10 análisis guardados. Elimina uno existente.'); return; }
+  saved.push({
+    id: data.analysis_id,
+    savedAt: new Date().toISOString(),
+    zoneName: data.zone.name,
+    businessType: data.business_type.original_input,
+    score: Math.round(data.viability.score),
+    category: data.viability.category,
+    competitors: data.businesses.filter(function(b){return b.classification==='competitor'}).length,
+    complementary: data.businesses.filter(function(b){return b.classification==='complementary'}).length,
+    population: data.ageb_data.total_population,
+    socioeconomicLevel: data.ageb_data.socioeconomic_level,
+    matchPercentage: data.target_match_percentage || null,
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  updateSavedBadge();
+  alert('Análisis guardado para comparación.');
+}
+
+function deleteSavedAnalysis(id) {
+  var saved = getSavedAnalyses().filter(function(s){return s.id !== id});
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  updateSavedBadge();
+  renderComparisonView();
+}
+
+function updateSavedBadge() {
+  var saved = getSavedAnalyses();
+  var badge = document.getElementById('saved-count-badge');
+  var btnCompare = document.getElementById('btn-compare');
+  if (badge) { badge.textContent = saved.length; badge.classList.toggle('hidden', saved.length === 0); }
+  if (btnCompare) btnCompare.disabled = saved.length < 2;
+}
+
+/* ===== Comparison view ===== */
+function showComparisonView() {
+  document.getElementById('summary-panel').classList.add('hidden');
+  document.getElementById('recommendation-section').classList.add('hidden');
+  document.getElementById('strategic-recommendations-section').classList.add('hidden');
+  document.getElementById('target-market-section').classList.add('hidden');
+  document.getElementById('competitor-value-section').classList.add('hidden');
+  document.getElementById('target-insights-section').classList.add('hidden');
+  document.getElementById('multi-radius-panel').classList.add('hidden');
+  document.getElementById('environment-vars-section').classList.add('hidden');
+  document.getElementById('export-buttons').classList.add('hidden');
+  document.getElementById('comparison-buttons').classList.add('hidden');
+  document.getElementById('btn-new-analysis').classList.add('hidden');
+  document.getElementById('comparison-view').classList.remove('hidden');
+  renderComparisonView();
+}
+
+function hideComparisonView() {
+  document.getElementById('comparison-view').classList.add('hidden');
+  document.getElementById('summary-panel').classList.remove('hidden');
+  document.getElementById('recommendation-section').classList.remove('hidden');
+  document.getElementById('export-buttons').classList.remove('hidden');
+  document.getElementById('comparison-buttons').classList.remove('hidden');
+  document.getElementById('btn-new-analysis').classList.remove('hidden');
+  if (appState.analysisResult) renderResults(appState.analysisResult);
+}
+
+function renderComparisonView() {
+  var container = document.getElementById('comparison-table-container');
+  var saved = getSavedAnalyses();
+  if (!container || saved.length < 2) { container.innerHTML = '<p>Se necesitan al menos 2 análisis guardados.</p>'; return; }
+
+  var bestIdx = 0;
+  saved.forEach(function(s, i) { if (s.score > saved[bestIdx].score) bestIdx = i; });
+
+  var html = '<table class="comparison-table"><thead><tr><th>Métrica</th>';
+  saved.forEach(function(s) { html += '<th>' + escapeHtml(s.zoneName) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  var rows = [
+    {label:'Negocio', key:'businessType'},
+    {label:'Puntaje', key:'score', highlight:true},
+    {label:'Categoría', key:'category'},
+    {label:'Competidores', key:'competitors'},
+    {label:'Complementarios', key:'complementary'},
+    {label:'Población', key:'population', fmt:'number'},
+    {label:'Nivel socioeconómico', key:'socioeconomicLevel'},
+    {label:'% Perfil objetivo', key:'matchPercentage', fmt:'pct'},
+    {label:'Fecha', key:'savedAt', fmt:'date'},
+  ];
+
+  rows.forEach(function(row) {
+    html += '<tr><td><strong>' + row.label + '</strong></td>';
+    saved.forEach(function(s, i) {
+      var val = s[row.key];
+      var cls = (row.highlight && i === bestIdx) ? ' class="best-score"' : '';
+      if (val == null) html += '<td' + cls + '>—</td>';
+      else if (row.fmt === 'number') html += '<td' + cls + '>' + formatNumber(val) + '</td>';
+      else if (row.fmt === 'pct') html += '<td' + cls + '>' + val.toFixed(1) + '%</td>';
+      else if (row.fmt === 'date') html += '<td' + cls + '>' + new Date(val).toLocaleDateString('es-MX') + '</td>';
+      else html += '<td' + cls + '>' + escapeHtml(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  // Delete row
+  html += '<tr><td></td>';
+  saved.forEach(function(s) { html += '<td><button class="delete-btn" onclick="deleteSavedAnalysis(\'' + s.id + '\')">🗑️ Eliminar</button></td>'; });
+  html += '</tr></tbody></table>';
+
+  container.innerHTML = html;
+}
+
+/* ===== Comparison button wiring ===== */
+document.getElementById('btn-save-compare').addEventListener('click', saveAnalysis);
+document.getElementById('btn-compare').addEventListener('click', function() { showComparisonView(); });
+document.getElementById('btn-back-from-compare').addEventListener('click', function() { hideComparisonView(); });
 
 /* ===== Init map on load ===== */
 document.addEventListener('DOMContentLoaded', function () {

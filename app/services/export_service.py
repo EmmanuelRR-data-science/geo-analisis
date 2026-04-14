@@ -308,6 +308,79 @@ class ExportService:
                     _row(pdf, f"{s.get('sector', '')} ({s.get('code_2d', '')})", f"{s.get('count', 0)} negocios ({s.get('percentage', 0):.1f}%)")
             pdf.ln(4)
 
+        # --- Perfil de Mercado Objetivo ---
+        if result.target_profile:
+            _section(pdf, "Perfil de Mercado Objetivo")
+            pdf.set_font(_F, "I", 10)
+            pdf.set_text_color(100, 100, 100)
+            pdf.multi_cell(0, 5, _clean_text(result.target_profile))
+            pdf.ln(2)
+            if result.target_match_percentage is not None:
+                _row(pdf, "Coincidencia demográfica", f"{result.target_match_percentage:.1f}%")
+            if result.target_match_population is not None:
+                _row(pdf, "Población estimada objetivo", f"{result.target_match_population:,}")
+            if result.target_match_breakdown:
+                bd = result.target_match_breakdown
+                _sub(pdf, "Desglose de Factores")
+                if "gender_factor" in bd:
+                    _row(pdf, "Factor de género", f"{bd['gender_factor'] * 100:.0f}%")
+                if "age_factor" in bd:
+                    _row(pdf, "Factor de edad", f"{bd['age_factor'] * 100:.0f}%")
+                if "socioeconomic_factor" in bd:
+                    _row(pdf, "Factor socioeconómico", f"{bd['socioeconomic_factor'] * 100:.0f}%")
+            pdf.ln(4)
+
+        # --- Análisis de Competidores — Puntos de Valor ---
+        if result.competitor_value_points:
+            _section(pdf, "Análisis de Competidores — Puntos de Valor")
+            _sub(pdf, "Lo que valoran los clientes")
+            for vp in result.competitor_value_points:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(39, 174, 96)
+                pdf.cell(6, 5, "✓")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(vp.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(100, 100, 100)
+                pdf.multi_cell(0, 4, _clean_text(vp.get("description", "")))
+                pdf.ln(2)
+            pdf.ln(2)
+
+        if result.competitor_improvement_opportunities:
+            _sub(pdf, "Oportunidades de Mejora")
+            for io in result.competitor_improvement_opportunities:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(243, 156, 18)
+                pdf.cell(6, 5, "⚡")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(io.get("issue", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "I", 8)
+                pdf.set_text_color(146, 64, 14)
+                pdf.multi_cell(0, 4, "Recomendación: " + _clean_text(io.get("recommendation", "")))
+                pdf.ln(2)
+            pdf.ln(2)
+
+        # --- Lo que tu cliente objetivo valora ---
+        if result.target_customer_insights:
+            _section(pdf, "Lo que tu Cliente Objetivo Valora")
+            for insight in result.target_customer_insights:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(30, 64, 175)
+                pdf.cell(6, 5, "★")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(insight.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(100, 100, 100)
+                pdf.multi_cell(0, 4, _clean_text(insight.get("explanation", "")))
+                pdf.ln(2)
+            pdf.ln(4)
+
         # --- Factores de viabilidad ---
         _section(pdf, "Desglose de Factores de Viabilidad")
         _factor_labels = {

@@ -21,6 +21,7 @@ from app.services.zone_service import ZoneService
 from app.services.export_service import ExportService
 from app.services.analysis_engine import AnalysisEngine
 from app.services.environment_calculator import EnvironmentCalculator
+from app.services.target_market_service import TargetMarketService
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,9 @@ async def analyze(request: Request):
     # Google categories
     google_ally_categories = body.get("google_ally_categories", []) or []
     google_competitor_categories = body.get("google_competitor_categories", []) or []
+
+    # Target market profile (optional)
+    target_profile = body.get("target_profile", "").strip() or None
 
     # Semantic keywords (free text, comma-separated)
     keyword_ally = body.get("keyword_ally", "") or ""
@@ -186,6 +190,9 @@ async def analyze(request: Request):
     )
     search_task = asyncio.create_task(data_service.get_businesses_in_zone(zone, temp_interp, radius_m=radius_m))
 
+    # Parse target profile in parallel (if provided)
+    profile_task = asyncio.create_task(llm_service.parse_target_profile(target_profile)) if target_profile else None
+
     # Run Google category searches in parallel with main search
     all_google_categories = list(set(google_ally_categories + google_competitor_categories))
     category_task = asyncio.create_task(
@@ -194,6 +201,15 @@ async def analyze(request: Request):
 
     interpretation, (businesses, biz_warnings) = await asyncio.gather(interpret_task, search_task)
     warnings.extend(biz_warnings)
+
+    # Await target profile parsing result
+    target_criteria = None
+    if profile_task:
+        try:
+            target_criteria = await profile_task
+        except Exception as e:
+            warnings.append(f"Error interpretando perfil objetivo: {e}")
+            target_criteria = None
 
     # Consolidate category search results with main results
     if category_task:
@@ -223,6 +239,25 @@ async def analyze(request: Request):
     # Step 3: Classify businesses (uses fast model)
     classified = await llm_service.classify_businesses(interpretation, businesses, user_filters=user_filters)
     viability = analysis_engine.calculate_viability(classified, ageb_data)
+
+    # Calculate target market match percentage
+    target_match = None
+    if target_criteria:
+        try:
+            target_match = TargetMarketService.calculate_match_percentage(target_criteria, ageb_data)
+        except Exception as e:
+            warnings.append(f"Error calculando coincidencia de perfil: {e}")
+
+    # Analyze competitor reviews
+    review_analysis = None
+    competitors_list = [b for b in classified if b.classification == "competitor"]
+    if competitors_list:
+        try:
+            review_analysis = await llm_service.analyze_competitor_reviews(
+                competitors_list, target_profile, target_criteria
+            )
+        except Exception as e:
+            warnings.append(f"Error en análisis de reseñas: {e}")
 
     # Multi-radius analysis (1km, 3km, 5km)
     multi_radii_km = [1, 3, 5]
@@ -267,6 +302,14 @@ async def analyze(request: Request):
         warnings=warnings,
         timestamp=datetime.now(timezone.utc).isoformat(),
         multi_radius_results=multi_radius_results,
+        target_profile=target_profile,
+        target_criteria=target_criteria.model_dump() if target_criteria else None,
+        target_match_percentage=target_match.percentage if target_match else None,
+        target_match_population=target_match.estimated_population if target_match else None,
+        target_match_breakdown=target_match.breakdown if target_match else None,
+        competitor_value_points=[vp.model_dump() for vp in review_analysis.value_points] if review_analysis and not review_analysis.insufficient_data else None,
+        competitor_improvement_opportunities=[io.model_dump() for io in review_analysis.improvement_opportunities] if review_analysis and not review_analysis.insufficient_data else None,
+        target_customer_insights=[tci.model_dump() for tci in review_analysis.target_customer_insights] if review_analysis and review_analysis.target_customer_insights else None,
     )
 
     # Step 4: Generate recommendation (uses big model)

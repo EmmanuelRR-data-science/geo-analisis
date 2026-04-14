@@ -106,6 +106,13 @@
           </div>
         </div>
 
+        <!-- Perfil de cliente objetivo -->
+        <div class="form-group">
+          <label for="target-profile">Perfil de cliente objetivo (opcional)</label>
+          <textarea id="target-profile" maxlength="500" rows="2" placeholder="Ej. mujeres de 25-45 años, nivel socioeconómico medio-alto, con hijos"></textarea>
+          <small class="form-hint">Describe tu cliente ideal. El sistema estimará qué % de la población coincide.</small>
+        </div>
+
         <!-- Palabras clave semánticas -->
         <div class="form-group">
           <label>Palabras clave aliados (opcional)</label>
@@ -166,6 +173,24 @@
         <ol id="strategic-recommendations-list" class="strategic-recommendations-list"></ol>
       </section>
 
+      <!-- Target market profile section -->
+      <section id="target-market-section" class="target-market-section hidden">
+        <h2>Perfil de Mercado Objetivo</h2>
+        <div id="target-market-content"></div>
+      </section>
+
+      <!-- Competitor value points section -->
+      <section id="competitor-value-section" class="competitor-value-section hidden">
+        <h2>Análisis de Competidores — Puntos de Valor</h2>
+        <div id="competitor-value-content"></div>
+      </section>
+
+      <!-- Target customer insights section -->
+      <section id="target-insights-section" class="target-insights-section hidden">
+        <h2>Lo que tu cliente objetivo valora</h2>
+        <div id="target-insights-content"></div>
+      </section>
+
       <!-- Multi-radius comparison panel -->
       <section id="multi-radius-panel" class="multi-radius-panel hidden">
         <h2>Comparación Multi-Radio</h2>
@@ -184,6 +209,19 @@
         <button id="btn-export-pdf" class="btn btn-secondary" type="button">Descargar Informe (PDF)</button>
         <button id="btn-export-html" class="btn btn-secondary" type="button">Descargar Mapa (HTML)</button>
       </div>
+
+      <!-- Comparison buttons -->
+      <div id="comparison-buttons" class="comparison-buttons hidden">
+        <button id="btn-save-compare" class="btn btn-secondary" type="button">💾 Guardar para comparar <span id="saved-count-badge" class="saved-badge hidden">0</span></button>
+        <button id="btn-compare" class="btn btn-secondary" type="button" disabled>📊 Comparar ubicaciones</button>
+      </div>
+
+      <!-- Comparison view (replaces main content when active) -->
+      <section id="comparison-view" class="comparison-view hidden">
+        <h2>Comparación de Ubicaciones</h2>
+        <div id="comparison-table-container"></div>
+        <button id="btn-back-from-compare" class="btn btn-outline" type="button">← Volver</button>
+      </section>
 
       <!-- New analysis button (hidden until analysis) -->
       <button id="btn-new-analysis" class="btn btn-outline hidden" type="button">Nuevo análisis</button>
