@@ -308,6 +308,79 @@ class ExportService:
                     _row(pdf, f"{s.get('sector', '')} ({s.get('code_2d', '')})", f"{s.get('count', 0)} negocios ({s.get('percentage', 0):.1f}%)")
             pdf.ln(4)
 
+        # --- Perfil de Mercado Objetivo ---
+        if result.target_profile:
+            _section(pdf, "Perfil de Mercado Objetivo")
+            pdf.set_font(_F, "I", 10)
+            pdf.set_text_color(100, 100, 100)
+            pdf.multi_cell(0, 5, _clean_text(result.target_profile))
+            pdf.ln(2)
+            if result.target_match_percentage is not None:
+                _row(pdf, "Coincidencia demográfica", f"{result.target_match_percentage:.1f}%")
+            if result.target_match_population is not None:
+                _row(pdf, "Población estimada objetivo", f"{result.target_match_population:,}")
+            if result.target_match_breakdown:
+                bd = result.target_match_breakdown
+                _sub(pdf, "Desglose de Factores")
+                if "gender_factor" in bd:
+                    _row(pdf, "Factor de género", f"{bd['gender_factor'] * 100:.0f}%")
+                if "age_factor" in bd:
+                    _row(pdf, "Factor de edad", f"{bd['age_factor'] * 100:.0f}%")
+                if "socioeconomic_factor" in bd:
+                    _row(pdf, "Factor socioeconómico", f"{bd['socioeconomic_factor'] * 100:.0f}%")
+            pdf.ln(4)
+
+        # --- Análisis de Competidores — Puntos de Valor ---
+        if result.competitor_value_points:
+            _section(pdf, "Análisis de Competidores — Puntos de Valor")
+            _sub(pdf, "Lo que valoran los clientes")
+            for vp in result.competitor_value_points:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(39, 174, 96)
+                pdf.cell(6, 5, "✓")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(vp.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(100, 100, 100)
+                pdf.multi_cell(0, 4, _clean_text(vp.get("description", "")))
+                pdf.ln(2)
+            pdf.ln(2)
+
+        if result.competitor_improvement_opportunities:
+            _sub(pdf, "Oportunidades de Mejora")
+            for io in result.competitor_improvement_opportunities:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(243, 156, 18)
+                pdf.cell(6, 5, "⚡")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(io.get("issue", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "I", 8)
+                pdf.set_text_color(146, 64, 14)
+                pdf.multi_cell(0, 4, "Recomendación: " + _clean_text(io.get("recommendation", "")))
+                pdf.ln(2)
+            pdf.ln(2)
+
+        # --- Lo que tu cliente objetivo valora ---
+        if result.target_customer_insights:
+            _section(pdf, "Lo que tu Cliente Objetivo Valora")
+            for insight in result.target_customer_insights:
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 9)
+                pdf.set_text_color(30, 64, 175)
+                pdf.cell(6, 5, "★")
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(0, 5, _clean_text(insight.get("title", "")), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(100, 100, 100)
+                pdf.multi_cell(0, 4, _clean_text(insight.get("explanation", "")))
+                pdf.ln(2)
+            pdf.ln(4)
+
         # --- Factores de viabilidad ---
         _section(pdf, "Desglose de Factores de Viabilidad")
         _factor_labels = {
@@ -347,14 +420,14 @@ class ExportService:
         # --- Gráficas de análisis de competidores ---
         competitors = [b for b in result.businesses if b.classification == "competitor"]
         if competitors:
-            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart
+            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart, extract_schedule_data
 
             # Schedule opportunity chart
             schedule_png = generate_schedule_opportunity_chart(competitors)
             if schedule_png:
                 if pdf.get_y() > 140:
                     pdf.add_page()
-                _section(pdf, "Oportunidad por Día de la Semana")
+                _section(pdf, "Análisis de Horarios de Competidores")
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                         tmp.write(schedule_png)
@@ -364,6 +437,58 @@ class ExportService:
                     os.unlink(tmp_path)
                 except Exception as e:
                     logger.warning("Could not embed schedule chart: %s", e)
+                pdf.ln(4)
+
+            # Schedule data table
+            schedule_data = extract_schedule_data(competitors)
+            if schedule_data:
+                pdf.ln(2)
+                # Table header
+                pdf.set_font(_F, "B", 8)
+                pdf.set_text_color(44, 62, 80)
+                col_w = [28, 24, 24, 24, 28, 62]
+                headers = ["Día", "Abiertos", "Cerrados", "Total", "% Abiertos", "Interpretación"]
+                for i, h in enumerate(headers):
+                    pdf.cell(col_w[i], 6, h, border=1, align="C")
+                pdf.ln()
+                # Table rows
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(60, 60, 60)
+                for row in schedule_data:
+                    # Interpretation based on open percentage
+                    if row["open_pct"] >= 80:
+                        interp = "Alta competencia"
+                    elif row["open_pct"] >= 50:
+                        interp = "Competencia moderada"
+                    else:
+                        interp = "Baja competencia (oportunidad)"
+                    pdf.cell(col_w[0], 5, row["day"], border=1, align="C")
+                    pdf.cell(col_w[1], 5, str(row["open"]), border=1, align="C")
+                    pdf.cell(col_w[2], 5, str(row["closed"]), border=1, align="C")
+                    pdf.cell(col_w[3], 5, str(row["total"]), border=1, align="C")
+                    pdf.cell(col_w[4], 5, f"{row['open_pct']:.0f}%", border=1, align="C")
+                    pdf.cell(col_w[5], 5, interp, border=1, align="C")
+                    pdf.ln()
+                pdf.ln(3)
+
+                # AI explanation text
+                # Find the day with least competition and most competition
+                min_day = min(schedule_data, key=lambda x: x["open_pct"])
+                max_day = max(schedule_data, key=lambda x: x["open_pct"])
+
+                explanation = (
+                    f"Esta tabla muestra cuántos de los {schedule_data[0]['total']} competidores identificados "
+                    f"operan cada día de la semana. "
+                    f"El día con menor competencia es {min_day['day']} ({min_day['open']} de {min_day['total']} abiertos, "
+                    f"{min_day['open_pct']:.0f}%), lo que representa una oportunidad para captar clientes desatendidos. "
+                    f"El día con mayor competencia es {max_day['day']} ({max_day['open']} de {max_day['total']} abiertos, "
+                    f"{max_day['open_pct']:.0f}%), donde será necesario diferenciarse más para competir. "
+                    f"Considere ajustar sus horarios de operación para aprovechar los días con menor presencia de competidores."
+                )
+
+                pdf.set_font(_F, "I", 9)
+                pdf.set_text_color(80, 80, 80)
+                pdf.multi_cell(0, 4.5, _clean_text(explanation))
                 pdf.ln(4)
 
             # Ratings chart
@@ -418,6 +543,76 @@ class ExportService:
                     pdf.multi_cell(0, 4.5, f'"{_clean_text(complaint["text"])}"')
                     pdf.ln(2)
                 pdf.ln(4)
+
+        # --- Tráfico Peatonal ---
+        if result.zone_traffic_profile:
+            ztp = result.zone_traffic_profile
+            if isinstance(ztp, dict) and ztp.get('hourly_matrix'):
+                from app.services.chart_generator import generate_foot_traffic_chart
+
+                if pdf.get_y() > 140:
+                    pdf.add_page()
+                _section(pdf, "Análisis de Tráfico Peatonal")
+
+                # Chart
+                traffic_png = generate_foot_traffic_chart(ztp)
+                if traffic_png:
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                            tmp.write(traffic_png)
+                            tmp_path = tmp.name
+                        pdf.image(tmp_path, x=15, w=170)
+                        import os
+                        os.unlink(tmp_path)
+                    except Exception as e:
+                        logger.warning("Could not embed foot traffic chart: %s", e)
+                    pdf.ln(4)
+
+                # Summary
+                days_es = {'Monday':'Lunes','Tuesday':'Martes','Wednesday':'Miércoles','Thursday':'Jueves','Friday':'Viernes','Saturday':'Sábado','Sunday':'Domingo'}
+                busiest = days_es.get(ztp.get('busiest_day',''), ztp.get('busiest_day',''))
+                quietest = days_es.get(ztp.get('quietest_day',''), ztp.get('quietest_day',''))
+                _row(pdf, "Día más concurrido", busiest)
+                _row(pdf, "Día más tranquilo", quietest)
+                _row(pdf, "Permanencia promedio", f"{ztp.get('avg_dwell_time_minutes', 0):.0f} minutos")
+                _row(pdf, "Competidores con datos", f"{ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)}")
+                pdf.ln(2)
+
+                # Peak/quiet hours table
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                quiet_by_day = ztp.get('quiet_hours_by_day', {})
+                if peak_by_day:
+                    _sub(pdf, "Horas Pico y Tranquilas por Día")
+                    pdf.set_font(_F, "B", 8)
+                    pdf.set_text_color(44, 62, 80)
+                    col_w = [30, 50, 50, 60]
+                    for i, h in enumerate(["Día", "Horas pico", "Horas tranquilas", "Interpretación"]):
+                        pdf.cell(col_w[i], 6, h, border=1, align="C")
+                    pdf.ln()
+                    pdf.set_font(_F, "", 8)
+                    pdf.set_text_color(60, 60, 60)
+                    for day_en in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']:
+                        day_es = days_es.get(day_en, day_en)
+                        peaks = peak_by_day.get(day_en, [])
+                        quiets = quiet_by_day.get(day_en, [])
+                        peak_str = ", ".join(f"{h}:00" for h in peaks[:3]) if peaks else "—"
+                        quiet_str = ", ".join(f"{h}:00" for h in quiets[:3]) if quiets else "—"
+                        # Interpretation
+                        matrix = ztp.get('hourly_matrix', {})
+                        day_hours = matrix.get(day_en, [])
+                        day_avg = sum(day_hours) / len(day_hours) if day_hours else 0
+                        if day_avg >= 50:
+                            interp = "Alta afluencia"
+                        elif day_avg >= 25:
+                            interp = "Afluencia moderada"
+                        else:
+                            interp = "Baja afluencia"
+                        pdf.cell(col_w[0], 5, day_es, border=1, align="C")
+                        pdf.cell(col_w[1], 5, peak_str, border=1, align="C")
+                        pdf.cell(col_w[2], 5, quiet_str, border=1, align="C")
+                        pdf.cell(col_w[3], 5, interp, border=1, align="C")
+                        pdf.ln()
+                    pdf.ln(4)
 
         # --- Mapa ---
         if map_image_bytes:

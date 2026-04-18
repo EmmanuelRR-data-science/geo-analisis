@@ -17,33 +17,250 @@ const appState = {
   googleCompetitorCategories: [],
 };
 
-/* ===== Google Categories ===== */
+/* ===== Google Categories (Table A – Google Places types) ===== */
 var GOOGLE_CATEGORIES = [
-  { value: "restaurant", label: "Restaurante" },
-  { value: "cafe", label: "Café" },
-  { value: "bakery", label: "Panadería" },
-  { value: "bar", label: "Bar" },
-  { value: "pharmacy", label: "Farmacia" },
-  { value: "grocery_store", label: "Tienda de abarrotes" },
-  { value: "supermarket", label: "Supermercado" },
-  { value: "clothing_store", label: "Tienda de ropa" },
-  { value: "shoe_store", label: "Zapatería" },
-  { value: "beauty_salon", label: "Salón de belleza" },
-  { value: "hair_care", label: "Peluquería" },
-  { value: "gym", label: "Gimnasio" },
-  { value: "laundry", label: "Lavandería" },
-  { value: "hardware_store", label: "Ferretería" },
-  { value: "electronics_store", label: "Electrónica" },
-  { value: "pet_store", label: "Mascotas" },
-  { value: "veterinary_care", label: "Veterinaria" },
-  { value: "dentist", label: "Dentista" },
-  { value: "doctor", label: "Consultorio médico" },
-  { value: "car_repair", label: "Taller mecánico" },
-  { value: "gas_station", label: "Gasolinera" },
-  { value: "convenience_store", label: "Tienda de conveniencia" },
-  { value: "florist", label: "Florería" },
-  { value: "book_store", label: "Librería" },
-  { value: "bank", label: "Banco" },
+  // Automotriz
+  { value: "car_dealer", label: "Agencia de autos", group: "Automotriz" },
+  { value: "car_rental", label: "Renta de autos", group: "Automotriz" },
+  { value: "car_repair", label: "Taller mecánico", group: "Automotriz" },
+  { value: "car_wash", label: "Autolavado", group: "Automotriz" },
+  { value: "electric_vehicle_charging_station", label: "Estación de carga eléctrica", group: "Automotriz" },
+  { value: "gas_station", label: "Gasolinera", group: "Automotriz" },
+  { value: "parking", label: "Estacionamiento", group: "Automotriz" },
+  { value: "rest_stop", label: "Parada de descanso", group: "Automotriz" },
+
+  // Negocios
+  { value: "corporate_office", label: "Oficina corporativa", group: "Negocios" },
+  { value: "farm", label: "Granja", group: "Negocios" },
+  { value: "ranch", label: "Rancho", group: "Negocios" },
+
+  // Cultura
+  { value: "art_gallery", label: "Galería de arte", group: "Cultura" },
+  { value: "art_studio", label: "Estudio de arte", group: "Cultura" },
+  { value: "auditorium", label: "Auditorio", group: "Cultura" },
+  { value: "cultural_landmark", label: "Sitio cultural", group: "Cultura" },
+  { value: "historical_place", label: "Lugar histórico", group: "Cultura" },
+  { value: "monument", label: "Monumento", group: "Cultura" },
+  { value: "museum", label: "Museo", group: "Cultura" },
+  { value: "performing_arts_theater", label: "Teatro", group: "Cultura" },
+  { value: "sculpture", label: "Escultura", group: "Cultura" },
+
+  // Educación
+  { value: "library", label: "Biblioteca", group: "Educación" },
+  { value: "preschool", label: "Preescolar", group: "Educación" },
+  { value: "primary_school", label: "Escuela primaria", group: "Educación" },
+  { value: "school", label: "Escuela", group: "Educación" },
+  { value: "secondary_school", label: "Escuela secundaria", group: "Educación" },
+  { value: "university", label: "Universidad", group: "Educación" },
+
+  // Entretenimiento y Recreación
+  { value: "amusement_center", label: "Centro de diversiones", group: "Entretenimiento" },
+  { value: "amusement_park", label: "Parque de diversiones", group: "Entretenimiento" },
+  { value: "aquarium", label: "Acuario", group: "Entretenimiento" },
+  { value: "banquet_hall", label: "Salón de banquetes", group: "Entretenimiento" },
+  { value: "botanical_garden", label: "Jardín botánico", group: "Entretenimiento" },
+  { value: "bowling_alley", label: "Boliche", group: "Entretenimiento" },
+  { value: "casino", label: "Casino", group: "Entretenimiento" },
+  { value: "community_center", label: "Centro comunitario", group: "Entretenimiento" },
+  { value: "concert_hall", label: "Sala de conciertos", group: "Entretenimiento" },
+  { value: "convention_center", label: "Centro de convenciones", group: "Entretenimiento" },
+  { value: "cultural_center", label: "Centro cultural", group: "Entretenimiento" },
+  { value: "event_venue", label: "Lugar de eventos", group: "Entretenimiento" },
+  { value: "garden", label: "Jardín", group: "Entretenimiento" },
+  { value: "hiking_area", label: "Zona de senderismo", group: "Entretenimiento" },
+  { value: "historical_landmark", label: "Sitio histórico", group: "Entretenimiento" },
+  { value: "internet_cafe", label: "Café internet", group: "Entretenimiento" },
+  { value: "karaoke", label: "Karaoke", group: "Entretenimiento" },
+  { value: "marina", label: "Marina", group: "Entretenimiento" },
+  { value: "movie_rental", label: "Renta de películas", group: "Entretenimiento" },
+  { value: "movie_theater", label: "Cine", group: "Entretenimiento" },
+  { value: "national_park", label: "Parque nacional", group: "Entretenimiento" },
+  { value: "night_club", label: "Antro/Club nocturno", group: "Entretenimiento" },
+  { value: "park", label: "Parque", group: "Entretenimiento" },
+  { value: "planetarium", label: "Planetario", group: "Entretenimiento" },
+  { value: "plaza", label: "Plaza", group: "Entretenimiento" },
+  { value: "tourist_attraction", label: "Atracción turística", group: "Entretenimiento" },
+  { value: "visitor_center", label: "Centro de visitantes", group: "Entretenimiento" },
+  { value: "water_park", label: "Parque acuático", group: "Entretenimiento" },
+  { value: "wedding_venue", label: "Lugar para bodas", group: "Entretenimiento" },
+  { value: "zoo", label: "Zoológico", group: "Entretenimiento" },
+
+  // Finanzas
+  { value: "accounting", label: "Contabilidad", group: "Finanzas" },
+  { value: "atm", label: "Cajero automático", group: "Finanzas" },
+  { value: "bank", label: "Banco", group: "Finanzas" },
+
+  // Alimentos y Bebidas
+  { value: "bakery", label: "Panadería", group: "Alimentos" },
+  { value: "bar", label: "Bar", group: "Alimentos" },
+  { value: "bar_and_grill", label: "Bar y parrilla", group: "Alimentos" },
+  { value: "barbecue_restaurant", label: "Restaurante de barbacoa", group: "Alimentos" },
+  { value: "breakfast_restaurant", label: "Restaurante de desayunos", group: "Alimentos" },
+  { value: "brunch_restaurant", label: "Restaurante de brunch", group: "Alimentos" },
+  { value: "cafe", label: "Café", group: "Alimentos" },
+  { value: "candy_store", label: "Dulcería", group: "Alimentos" },
+  { value: "chinese_restaurant", label: "Restaurante chino", group: "Alimentos" },
+  { value: "coffee_shop", label: "Cafetería", group: "Alimentos" },
+  { value: "deli", label: "Delicatessen", group: "Alimentos" },
+  { value: "dessert_restaurant", label: "Restaurante de postres", group: "Alimentos" },
+  { value: "dessert_shop", label: "Tienda de postres", group: "Alimentos" },
+  { value: "fast_food_restaurant", label: "Comida rápida", group: "Alimentos" },
+  { value: "fine_dining_restaurant", label: "Restaurante de alta cocina", group: "Alimentos" },
+  { value: "food_court", label: "Área de comida", group: "Alimentos" },
+  { value: "french_restaurant", label: "Restaurante francés", group: "Alimentos" },
+  { value: "greek_restaurant", label: "Restaurante griego", group: "Alimentos" },
+  { value: "hamburger_restaurant", label: "Hamburguesería", group: "Alimentos" },
+  { value: "ice_cream_shop", label: "Heladería", group: "Alimentos" },
+  { value: "indian_restaurant", label: "Restaurante indio", group: "Alimentos" },
+  { value: "indonesian_restaurant", label: "Restaurante indonesio", group: "Alimentos" },
+  { value: "italian_restaurant", label: "Restaurante italiano", group: "Alimentos" },
+  { value: "japanese_restaurant", label: "Restaurante japonés", group: "Alimentos" },
+  { value: "juice_shop", label: "Jugería", group: "Alimentos" },
+  { value: "korean_restaurant", label: "Restaurante coreano", group: "Alimentos" },
+  { value: "lebanese_restaurant", label: "Restaurante libanés", group: "Alimentos" },
+  { value: "meal_delivery", label: "Entrega de comida", group: "Alimentos" },
+  { value: "meal_takeaway", label: "Comida para llevar", group: "Alimentos" },
+  { value: "mediterranean_restaurant", label: "Restaurante mediterráneo", group: "Alimentos" },
+  { value: "mexican_restaurant", label: "Restaurante mexicano", group: "Alimentos" },
+  { value: "middle_eastern_restaurant", label: "Restaurante del Medio Oriente", group: "Alimentos" },
+  { value: "pizza_restaurant", label: "Pizzería", group: "Alimentos" },
+  { value: "pub", label: "Pub", group: "Alimentos" },
+  { value: "ramen_restaurant", label: "Restaurante de ramen", group: "Alimentos" },
+  { value: "restaurant", label: "Restaurante", group: "Alimentos" },
+  { value: "sandwich_shop", label: "Sandwichería", group: "Alimentos" },
+  { value: "seafood_restaurant", label: "Marisquería", group: "Alimentos" },
+  { value: "spanish_restaurant", label: "Restaurante español", group: "Alimentos" },
+  { value: "steak_house", label: "Asador/Steakhouse", group: "Alimentos" },
+  { value: "sushi_restaurant", label: "Restaurante de sushi", group: "Alimentos" },
+  { value: "tea_house", label: "Casa de té", group: "Alimentos" },
+  { value: "thai_restaurant", label: "Restaurante tailandés", group: "Alimentos" },
+  { value: "turkish_restaurant", label: "Restaurante turco", group: "Alimentos" },
+  { value: "vegan_restaurant", label: "Restaurante vegano", group: "Alimentos" },
+  { value: "vegetarian_restaurant", label: "Restaurante vegetariano", group: "Alimentos" },
+  { value: "vietnamese_restaurant", label: "Restaurante vietnamita", group: "Alimentos" },
+  { value: "wine_bar", label: "Bar de vinos", group: "Alimentos" },
+
+  // Gobierno
+  { value: "city_hall", label: "Ayuntamiento", group: "Gobierno" },
+  { value: "courthouse", label: "Juzgado", group: "Gobierno" },
+  { value: "embassy", label: "Embajada", group: "Gobierno" },
+  { value: "fire_station", label: "Estación de bomberos", group: "Gobierno" },
+  { value: "government_office", label: "Oficina de gobierno", group: "Gobierno" },
+  { value: "local_government_office", label: "Oficina de gobierno local", group: "Gobierno" },
+  { value: "police", label: "Policía", group: "Gobierno" },
+  { value: "post_office", label: "Oficina de correos", group: "Gobierno" },
+
+  // Salud y Bienestar
+  { value: "chiropractor", label: "Quiropráctico", group: "Salud" },
+  { value: "dental_clinic", label: "Clínica dental", group: "Salud" },
+  { value: "dentist", label: "Dentista", group: "Salud" },
+  { value: "doctor", label: "Consultorio médico", group: "Salud" },
+  { value: "drugstore", label: "Droguería", group: "Salud" },
+  { value: "hospital", label: "Hospital", group: "Salud" },
+  { value: "massage", label: "Masajes", group: "Salud" },
+  { value: "medical_lab", label: "Laboratorio médico", group: "Salud" },
+  { value: "pharmacy", label: "Farmacia", group: "Salud" },
+  { value: "physiotherapist", label: "Fisioterapeuta", group: "Salud" },
+  { value: "sauna", label: "Sauna", group: "Salud" },
+  { value: "skin_care_clinic", label: "Clínica de cuidado de piel", group: "Salud" },
+  { value: "spa", label: "Spa", group: "Salud" },
+  { value: "wellness_center", label: "Centro de bienestar", group: "Salud" },
+  { value: "yoga_studio", label: "Estudio de yoga", group: "Salud" },
+
+  // Hospedaje
+  { value: "bed_and_breakfast", label: "Bed & Breakfast", group: "Hospedaje" },
+  { value: "campground", label: "Campamento", group: "Hospedaje" },
+  { value: "guest_house", label: "Casa de huéspedes", group: "Hospedaje" },
+  { value: "hostel", label: "Hostal", group: "Hospedaje" },
+  { value: "hotel", label: "Hotel", group: "Hospedaje" },
+  { value: "lodging", label: "Alojamiento", group: "Hospedaje" },
+  { value: "motel", label: "Motel", group: "Hospedaje" },
+  { value: "resort_hotel", label: "Hotel resort", group: "Hospedaje" },
+  { value: "rv_park", label: "Parque de RVs", group: "Hospedaje" },
+
+  // Culto
+  { value: "church", label: "Iglesia", group: "Culto" },
+  { value: "hindu_temple", label: "Templo hindú", group: "Culto" },
+  { value: "mosque", label: "Mezquita", group: "Culto" },
+  { value: "synagogue", label: "Sinagoga", group: "Culto" },
+
+  // Servicios
+  { value: "barber_shop", label: "Barbería", group: "Servicios" },
+  { value: "beauty_salon", label: "Salón de belleza", group: "Servicios" },
+  { value: "cemetery", label: "Cementerio", group: "Servicios" },
+  { value: "child_care_agency", label: "Guardería", group: "Servicios" },
+  { value: "consultant", label: "Consultor", group: "Servicios" },
+  { value: "electrician", label: "Electricista", group: "Servicios" },
+  { value: "florist", label: "Florería", group: "Servicios" },
+  { value: "funeral_home", label: "Funeraria", group: "Servicios" },
+  { value: "hair_care", label: "Cuidado del cabello", group: "Servicios" },
+  { value: "hair_salon", label: "Salón de cabello", group: "Servicios" },
+  { value: "insurance_agency", label: "Agencia de seguros", group: "Servicios" },
+  { value: "laundry", label: "Lavandería", group: "Servicios" },
+  { value: "lawyer", label: "Abogado", group: "Servicios" },
+  { value: "locksmith", label: "Cerrajero", group: "Servicios" },
+  { value: "moving_company", label: "Mudanzas", group: "Servicios" },
+  { value: "nail_salon", label: "Salón de uñas", group: "Servicios" },
+  { value: "painter", label: "Pintor", group: "Servicios" },
+  { value: "plumber", label: "Plomero", group: "Servicios" },
+  { value: "real_estate_agency", label: "Inmobiliaria", group: "Servicios" },
+  { value: "roofing_contractor", label: "Techador", group: "Servicios" },
+  { value: "storage", label: "Almacenamiento", group: "Servicios" },
+  { value: "tailor", label: "Sastre", group: "Servicios" },
+  { value: "travel_agency", label: "Agencia de viajes", group: "Servicios" },
+  { value: "veterinary_care", label: "Veterinaria", group: "Servicios" },
+
+  // Compras
+  { value: "asian_grocery_store", label: "Tienda asiática", group: "Compras" },
+  { value: "auto_parts_store", label: "Refaccionaria", group: "Compras" },
+  { value: "bicycle_store", label: "Tienda de bicicletas", group: "Compras" },
+  { value: "book_store", label: "Librería", group: "Compras" },
+  { value: "butcher_shop", label: "Carnicería", group: "Compras" },
+  { value: "cell_phone_store", label: "Tienda de celulares", group: "Compras" },
+  { value: "clothing_store", label: "Tienda de ropa", group: "Compras" },
+  { value: "convenience_store", label: "Tienda de conveniencia", group: "Compras" },
+  { value: "department_store", label: "Tienda departamental", group: "Compras" },
+  { value: "discount_store", label: "Tienda de descuento", group: "Compras" },
+  { value: "electronics_store", label: "Tienda de electrónica", group: "Compras" },
+  { value: "food_store", label: "Tienda de alimentos", group: "Compras" },
+  { value: "furniture_store", label: "Mueblería", group: "Compras" },
+  { value: "gift_shop", label: "Tienda de regalos", group: "Compras" },
+  { value: "grocery_store", label: "Tienda de abarrotes", group: "Compras" },
+  { value: "hardware_store", label: "Ferretería", group: "Compras" },
+  { value: "home_goods_store", label: "Tienda del hogar", group: "Compras" },
+  { value: "home_improvement_store", label: "Tienda de mejoras para el hogar", group: "Compras" },
+  { value: "jewelry_store", label: "Joyería", group: "Compras" },
+  { value: "liquor_store", label: "Licorería", group: "Compras" },
+  { value: "market", label: "Mercado", group: "Compras" },
+  { value: "pet_store", label: "Tienda de mascotas", group: "Compras" },
+  { value: "shoe_store", label: "Zapatería", group: "Compras" },
+  { value: "shopping_mall", label: "Centro comercial", group: "Compras" },
+  { value: "sporting_goods_store", label: "Tienda deportiva", group: "Compras" },
+  { value: "store", label: "Tienda", group: "Compras" },
+  { value: "supermarket", label: "Supermercado", group: "Compras" },
+  { value: "wholesaler", label: "Mayorista", group: "Compras" },
+
+  // Deportes
+  { value: "athletic_field", label: "Campo deportivo", group: "Deportes" },
+  { value: "fitness_center", label: "Centro de fitness", group: "Deportes" },
+  { value: "golf_course", label: "Campo de golf", group: "Deportes" },
+  { value: "gym", label: "Gimnasio", group: "Deportes" },
+  { value: "ice_skating_rink", label: "Pista de hielo", group: "Deportes" },
+  { value: "playground", label: "Área de juegos", group: "Deportes" },
+  { value: "ski_resort", label: "Centro de esquí", group: "Deportes" },
+  { value: "sports_club", label: "Club deportivo", group: "Deportes" },
+  { value: "sports_complex", label: "Complejo deportivo", group: "Deportes" },
+  { value: "stadium", label: "Estadio", group: "Deportes" },
+
+  // Transporte
+  { value: "airport", label: "Aeropuerto", group: "Transporte" },
+  { value: "bus_station", label: "Estación de autobuses", group: "Transporte" },
+  { value: "bus_stop", label: "Parada de autobús", group: "Transporte" },
+  { value: "light_rail_station", label: "Estación de tren ligero", group: "Transporte" },
+  { value: "subway_station", label: "Estación de metro", group: "Transporte" },
+  { value: "taxi_stand", label: "Sitio de taxis", group: "Transporte" },
+  { value: "train_station", label: "Estación de tren", group: "Transporte" },
+  { value: "transit_station", label: "Estación de tránsito", group: "Transporte" },
 ];
 
 /* ===== DOM refs ===== */
@@ -89,9 +306,7 @@ const dom = {
   colorScaleMin: document.getElementById('color-scale-min'),
   colorScaleMax: document.getElementById('color-scale-max'),
   /* Google category controls */
-  googleAllySelect: document.getElementById('google-ally-select'),
   googleAllyTags: document.getElementById('google-ally-tags'),
-  googleCompetitorSelect: document.getElementById('google-competitor-select'),
   googleCompetitorTags: document.getElementById('google-competitor-tags'),
   /* Strategic recommendations */
   strategicRecommendationsSection: document.getElementById('strategic-recommendations-section'),
@@ -299,26 +514,7 @@ document.addEventListener('click', function (e) {
   }
 });
 
-/* ===== Google Category Selectors ===== */
-function populateGoogleSelect(selectEl, filterType) {
-  var otherCategories = filterType === 'googleAlly' ? appState.googleCompetitorCategories : appState.googleAllyCategories;
-  var ownCategories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
-
-  // Clear all options except the placeholder
-  selectEl.innerHTML = '<option value="">Seleccionar categoría Google…</option>';
-
-  GOOGLE_CATEGORIES.forEach(function (cat) {
-    // Skip if already selected in either list
-    if (ownCategories.indexOf(cat.value) !== -1) return;
-    if (otherCategories.indexOf(cat.value) !== -1) return;
-
-    var opt = document.createElement('option');
-    opt.value = cat.value;
-    opt.textContent = cat.label;
-    selectEl.appendChild(opt);
-  });
-}
-
+/* ===== Google Category Autocomplete ===== */
 function addGoogleTag(filterType, value) {
   var categories = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
   var otherCategories = filterType === 'googleAlly' ? appState.googleCompetitorCategories : appState.googleAllyCategories;
@@ -335,9 +531,6 @@ function addGoogleTag(filterType, value) {
 
   categories.push(value);
   renderGoogleTags(filterType);
-  // Refresh both selects to remove the selected option
-  populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
-  populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
 }
 
 function removeGoogleTag(filterType, value) {
@@ -346,8 +539,6 @@ function removeGoogleTag(filterType, value) {
   if (idx !== -1) {
     categories.splice(idx, 1);
     renderGoogleTags(filterType);
-    populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
-    populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
   }
 }
 
@@ -370,22 +561,6 @@ function renderGoogleTags(filterType) {
   }).join('');
 }
 
-dom.googleAllySelect.addEventListener('change', function () {
-  var val = dom.googleAllySelect.value;
-  if (val) {
-    addGoogleTag('googleAlly', val);
-    dom.googleAllySelect.value = '';
-  }
-});
-
-dom.googleCompetitorSelect.addEventListener('change', function () {
-  var val = dom.googleCompetitorSelect.value;
-  if (val) {
-    addGoogleTag('googleCompetitor', val);
-    dom.googleCompetitorSelect.value = '';
-  }
-});
-
 // Delegate Google tag removal
 document.addEventListener('click', function (e) {
   if (e.target.classList.contains('google-tag-remove')) {
@@ -395,9 +570,52 @@ document.addEventListener('click', function (e) {
   }
 });
 
-// Initialize selects on load
-populateGoogleSelect(dom.googleAllySelect, 'googleAlly');
-populateGoogleSelect(dom.googleCompetitorSelect, 'googleCompetitor');
+/* ===== Google Category Autocomplete Setup ===== */
+function setupGoogleCategoryAutocomplete(inputId, dropdownId, filterType) {
+  var input = document.getElementById(inputId);
+  var dropdown = document.getElementById(dropdownId);
+  if (!input || !dropdown) return;
+
+  input.addEventListener('input', function() {
+    var q = input.value.trim().toLowerCase();
+    if (q.length < 1) { dropdown.classList.add('hidden'); return; }
+
+    var ownCats = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
+    var otherCats = filterType === 'googleAlly' ? appState.googleCompetitorCategories : appState.googleAllyCategories;
+
+    var matches = GOOGLE_CATEGORIES.filter(function(cat) {
+      if (ownCats.indexOf(cat.value) !== -1 || otherCats.indexOf(cat.value) !== -1) return false;
+      return cat.label.toLowerCase().indexOf(q) !== -1 || cat.value.toLowerCase().indexOf(q) !== -1 || cat.group.toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 15);
+
+    if (matches.length === 0) { dropdown.classList.add('hidden'); return; }
+
+    dropdown.innerHTML = matches.map(function(cat) {
+      return '<li data-value="' + cat.value + '"><span class="google-cat-group">' + escapeHtml(cat.group) + '</span> ' + escapeHtml(cat.label) + '</li>';
+    }).join('');
+    dropdown.classList.remove('hidden');
+  });
+
+  dropdown.addEventListener('click', function(e) {
+    var li = e.target.closest('li');
+    if (!li) return;
+    var val = li.getAttribute('data-value');
+    addGoogleTag(filterType, val);
+    input.value = '';
+    dropdown.classList.add('hidden');
+  });
+
+  // Close on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#' + inputId) && !e.target.closest('#' + dropdownId)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+}
+
+// Initialize autocomplete for both Google category inputs
+setupGoogleCategoryAutocomplete('google-ally-input', 'google-ally-dropdown', 'googleAlly');
+setupGoogleCategoryAutocomplete('google-competitor-input', 'google-competitor-dropdown', 'googleCompetitor');
 
 /* ===== Form submission ===== */
 dom.form.addEventListener('submit', function (e) {
@@ -442,6 +660,8 @@ dom.form.addEventListener('submit', function (e) {
     keyword_ally: document.getElementById('keyword-ally').value.trim(),
     keyword_competitor: document.getElementById('keyword-competitor').value.trim(),
   };
+
+  payload.target_profile = document.getElementById('target-profile').value.trim();
 
   if (hasCoords) {
     payload.custom_lat = parseFloat(customLat);
@@ -593,6 +813,69 @@ function renderEnvironmentVars(multiRadiusResults, extendedIndicators) {
 }
 
 /* ===== Render results ===== */
+var DAY_NAMES_ES = {Monday:'Lun',Tuesday:'Mar',Wednesday:'Mié',Thursday:'Jue',Friday:'Vie',Saturday:'Sáb',Sunday:'Dom'};
+var DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+function renderFootTrafficHeatmap(ztp) {
+  var section = document.getElementById('foot-traffic-section');
+  var heatmapDiv = document.getElementById('foot-traffic-heatmap');
+  var summaryDiv = document.getElementById('foot-traffic-summary');
+  if (!section || !heatmapDiv || !ztp || !ztp.hourly_matrix) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+
+  // Build heatmap table
+  var html = '<table class="heatmap-table"><thead><tr><th></th>';
+  // Hours: 6AM to 5AM (indices 0-23 map to hours 6,7,...,23,0,1,2,3,4,5)
+  for (var i = 0; i < 24; i++) {
+    var h = (i + 6) % 24;
+    html += '<th>' + h + '</th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  DAY_ORDER.forEach(function(day) {
+    var hours = ztp.hourly_matrix[day] || [];
+    html += '<tr><td class="day-label">' + (DAY_NAMES_ES[day] || day) + '</td>';
+    for (var i = 0; i < 24; i++) {
+      var val = hours[i] || 0;
+      var color = getHeatColor(val);
+      var hour = (i + 6) % 24;
+      html += '<td class="heatmap-cell" style="background:' + color + '" title="' + (DAY_NAMES_ES[day]||day) + ' ' + hour + ':00 — ' + Math.round(val) + '%"></td>';
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  heatmapDiv.innerHTML = html;
+
+  // Summary
+  var busyEs = DAY_NAMES_ES[ztp.busiest_day] || ztp.busiest_day;
+  var quietEs = DAY_NAMES_ES[ztp.quietest_day] || ztp.quietest_day;
+  summaryDiv.innerHTML = '<p class="foot-traffic-summary">'
+    + '<strong>Día más concurrido:</strong> ' + busyEs
+    + ' · <strong>Día más tranquilo:</strong> ' + quietEs
+    + ' · <strong>Permanencia promedio:</strong> ' + (ztp.avg_dwell_time_minutes || 0).toFixed(0) + ' min'
+    + ' · <strong>Datos de:</strong> ' + (ztp.venues_with_data || 0) + '/' + (ztp.venues_total || 0) + ' competidores'
+    + '</p>';
+
+  section.classList.remove('hidden');
+}
+
+function getHeatColor(val) {
+  // 0=green, 50=yellow, 100=red
+  val = Math.max(0, Math.min(100, val));
+  if (val <= 50) {
+    var r = Math.round(34 + (245 - 34) * (val / 50));
+    var g = Math.round(197 + (158 - 197) * (val / 50));
+    var b = Math.round(94 + (11 - 94) * (val / 50));
+  } else {
+    var r = Math.round(245 + (239 - 245) * ((val - 50) / 50));
+    var g = Math.round(158 + (68 - 158) * ((val - 50) / 50));
+    var b = Math.round(11 + (68 - 11) * ((val - 50) / 50));
+  }
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
 function renderResults(data) {
   // Hide form, show results
   dom.form.classList.add('hidden');
@@ -641,9 +924,21 @@ function renderResults(data) {
   // Environment variables
   renderEnvironmentVars(data.multi_radius_results, data.ageb_data.extended_indicators);
 
+  // Foot traffic heatmap
+  renderFootTrafficHeatmap(data.zone_traffic_profile);
+
   // Export & new analysis buttons
   dom.exportButtons.classList.remove('hidden');
   dom.btnNewAnalysis.classList.remove('hidden');
+
+  // Target market sections
+  renderTargetMarket(data);
+  renderCompetitorValue(data);
+  renderTargetInsights(data);
+
+  // Comparison buttons
+  document.getElementById('comparison-buttons').classList.remove('hidden');
+  updateSavedBadge();
 
   // Render map
   renderBusinesses(data.businesses, data.zone);
@@ -674,6 +969,12 @@ dom.btnNewAnalysis.addEventListener('click', function () {
   dom.warningsArea.classList.add('hidden');
   document.getElementById('multi-radius-panel').classList.add('hidden');
   document.getElementById('environment-vars-section').classList.add('hidden');
+  document.getElementById('foot-traffic-section').classList.add('hidden');
+  document.getElementById('target-market-section').classList.add('hidden');
+  document.getElementById('competitor-value-section').classList.add('hidden');
+  document.getElementById('target-insights-section').classList.add('hidden');
+  document.getElementById('comparison-buttons').classList.add('hidden');
+  document.getElementById('comparison-view').classList.add('hidden');
   hideError();
 
   // Clear radius elements
@@ -729,6 +1030,192 @@ dom.btnExportHtml.addEventListener('click', function () {
       btn.textContent = 'Descargar Mapa (HTML)';
     });
 });
+
+/* ===== Target market rendering ===== */
+function renderTargetMarket(data) {
+  var section = document.getElementById('target-market-section');
+  var content = document.getElementById('target-market-content');
+  if (!section || !content || data.target_match_percentage == null) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  var pct = data.target_match_percentage;
+  var pop = data.target_match_population || 0;
+  var colorClass = pct >= 30 ? 'green' : (pct >= 15 ? 'amber' : 'red');
+  var html = '<div class="target-profile-desc">' + escapeHtml(data.target_profile || '') + '</div>';
+  html += '<div class="match-bar-container"><div class="match-bar ' + colorClass + '" style="width:' + Math.min(pct, 100) + '%"></div><span class="match-pct">' + pct.toFixed(1) + '%</span></div>';
+  html += '<p class="match-pop">Población estimada: <strong>' + formatNumber(pop) + '</strong> personas</p>';
+  if (data.target_match_breakdown) {
+    var bd = data.target_match_breakdown;
+    html += '<div class="match-breakdown"><span>Género: ' + (bd.gender_factor * 100).toFixed(0) + '%</span><span>Edad: ' + (bd.age_factor * 100).toFixed(0) + '%</span><span>NSE: ' + (bd.socioeconomic_factor * 100).toFixed(0) + '%</span></div>';
+  }
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+function renderCompetitorValue(data) {
+  var section = document.getElementById('competitor-value-section');
+  var content = document.getElementById('competitor-value-content');
+  if (!section || !content) return;
+  var vps = data.competitor_value_points;
+  var ios = data.competitor_improvement_opportunities;
+  if ((!vps || !vps.length) && (!ios || !ios.length)) { section.classList.add('hidden'); return; }
+  var html = '';
+  if (vps && vps.length) {
+    html += '<h3>✅ Lo que valoran los clientes</h3><ul class="value-list">';
+    vps.forEach(function(vp) { html += '<li class="value-item positive"><strong>' + escapeHtml(vp.title) + '</strong><p>' + escapeHtml(vp.description) + '</p></li>'; });
+    html += '</ul>';
+  }
+  if (ios && ios.length) {
+    html += '<h3>⚡ Oportunidades de mejora</h3><ul class="value-list">';
+    ios.forEach(function(io) { html += '<li class="value-item opportunity"><strong>' + escapeHtml(io.issue) + '</strong><p class="recommendation">💡 ' + escapeHtml(io.recommendation) + '</p></li>'; });
+    html += '</ul>';
+  }
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+function renderTargetInsights(data) {
+  var section = document.getElementById('target-insights-section');
+  var content = document.getElementById('target-insights-content');
+  if (!section || !content || !data.target_customer_insights || !data.target_customer_insights.length) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+  var html = '<ul class="insights-list">';
+  data.target_customer_insights.forEach(function(insight) {
+    html += '<li class="insight-item"><strong>' + escapeHtml(insight.title) + '</strong><p>' + escapeHtml(insight.explanation) + '</p></li>';
+  });
+  html += '</ul>';
+  content.innerHTML = html;
+  section.classList.remove('hidden');
+}
+
+/* ===== Comparison: localStorage save/manage ===== */
+var STORAGE_KEY = 'geoanalisis_saved';
+var MAX_SAVED = 10;
+
+function getSavedAnalyses() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch(e) { localStorage.setItem(STORAGE_KEY, '[]'); return []; }
+}
+
+function saveAnalysis() {
+  var data = appState.analysisResult;
+  if (!data) return;
+  var saved = getSavedAnalyses();
+  if (saved.length >= MAX_SAVED) { alert('Has alcanzado el límite de 10 análisis guardados. Elimina uno existente.'); return; }
+  saved.push({
+    id: data.analysis_id,
+    savedAt: new Date().toISOString(),
+    zoneName: data.zone.name,
+    businessType: data.business_type.original_input,
+    score: Math.round(data.viability.score),
+    category: data.viability.category,
+    competitors: data.businesses.filter(function(b){return b.classification==='competitor'}).length,
+    complementary: data.businesses.filter(function(b){return b.classification==='complementary'}).length,
+    population: data.ageb_data.total_population,
+    socioeconomicLevel: data.ageb_data.socioeconomic_level,
+    matchPercentage: data.target_match_percentage || null,
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  updateSavedBadge();
+  alert('Análisis guardado para comparación.');
+}
+
+function deleteSavedAnalysis(id) {
+  var saved = getSavedAnalyses().filter(function(s){return s.id !== id});
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  updateSavedBadge();
+  renderComparisonView();
+}
+
+function updateSavedBadge() {
+  var saved = getSavedAnalyses();
+  var badge = document.getElementById('saved-count-badge');
+  var btnCompare = document.getElementById('btn-compare');
+  if (badge) { badge.textContent = saved.length; badge.classList.toggle('hidden', saved.length === 0); }
+  if (btnCompare) btnCompare.disabled = saved.length < 2;
+}
+
+/* ===== Comparison view ===== */
+function showComparisonView() {
+  document.getElementById('summary-panel').classList.add('hidden');
+  document.getElementById('recommendation-section').classList.add('hidden');
+  document.getElementById('strategic-recommendations-section').classList.add('hidden');
+  document.getElementById('target-market-section').classList.add('hidden');
+  document.getElementById('competitor-value-section').classList.add('hidden');
+  document.getElementById('target-insights-section').classList.add('hidden');
+  document.getElementById('multi-radius-panel').classList.add('hidden');
+  document.getElementById('environment-vars-section').classList.add('hidden');
+  document.getElementById('foot-traffic-section').classList.add('hidden');
+  document.getElementById('export-buttons').classList.add('hidden');
+  document.getElementById('comparison-buttons').classList.add('hidden');
+  document.getElementById('btn-new-analysis').classList.add('hidden');
+  document.getElementById('comparison-view').classList.remove('hidden');
+  renderComparisonView();
+}
+
+function hideComparisonView() {
+  document.getElementById('comparison-view').classList.add('hidden');
+  document.getElementById('summary-panel').classList.remove('hidden');
+  document.getElementById('recommendation-section').classList.remove('hidden');
+  document.getElementById('export-buttons').classList.remove('hidden');
+  document.getElementById('comparison-buttons').classList.remove('hidden');
+  document.getElementById('btn-new-analysis').classList.remove('hidden');
+  if (appState.analysisResult) renderResults(appState.analysisResult);
+}
+
+function renderComparisonView() {
+  var container = document.getElementById('comparison-table-container');
+  var saved = getSavedAnalyses();
+  if (!container || saved.length < 2) { container.innerHTML = '<p>Se necesitan al menos 2 análisis guardados.</p>'; return; }
+
+  var bestIdx = 0;
+  saved.forEach(function(s, i) { if (s.score > saved[bestIdx].score) bestIdx = i; });
+
+  var html = '<table class="comparison-table"><thead><tr><th>Métrica</th>';
+  saved.forEach(function(s) { html += '<th>' + escapeHtml(s.zoneName) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  var rows = [
+    {label:'Negocio', key:'businessType'},
+    {label:'Puntaje', key:'score', highlight:true},
+    {label:'Categoría', key:'category'},
+    {label:'Competidores', key:'competitors'},
+    {label:'Complementarios', key:'complementary'},
+    {label:'Población', key:'population', fmt:'number'},
+    {label:'Nivel socioeconómico', key:'socioeconomicLevel'},
+    {label:'% Perfil objetivo', key:'matchPercentage', fmt:'pct'},
+    {label:'Fecha', key:'savedAt', fmt:'date'},
+  ];
+
+  rows.forEach(function(row) {
+    html += '<tr><td><strong>' + row.label + '</strong></td>';
+    saved.forEach(function(s, i) {
+      var val = s[row.key];
+      var cls = (row.highlight && i === bestIdx) ? ' class="best-score"' : '';
+      if (val == null) html += '<td' + cls + '>—</td>';
+      else if (row.fmt === 'number') html += '<td' + cls + '>' + formatNumber(val) + '</td>';
+      else if (row.fmt === 'pct') html += '<td' + cls + '>' + val.toFixed(1) + '%</td>';
+      else if (row.fmt === 'date') html += '<td' + cls + '>' + new Date(val).toLocaleDateString('es-MX') + '</td>';
+      else html += '<td' + cls + '>' + escapeHtml(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  // Delete row
+  html += '<tr><td></td>';
+  saved.forEach(function(s) { html += '<td><button class="delete-btn" onclick="deleteSavedAnalysis(\'' + s.id + '\')">🗑️ Eliminar</button></td>'; });
+  html += '</tr></tbody></table>';
+
+  container.innerHTML = html;
+}
+
+/* ===== Comparison button wiring ===== */
+document.getElementById('btn-save-compare').addEventListener('click', saveAnalysis);
+document.getElementById('btn-compare').addEventListener('click', function() { showComparisonView(); });
+document.getElementById('btn-back-from-compare').addEventListener('click', function() { hideComparisonView(); });
 
 /* ===== Init map on load ===== */
 document.addEventListener('DOMContentLoaded', function () {

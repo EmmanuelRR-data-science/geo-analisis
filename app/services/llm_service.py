@@ -20,7 +20,12 @@ from app.models.schemas import (
     Business,
     BusinessInterpretation,
     ClassifiedBusiness,
+    CompetitorReviewAnalysis,
+    ImprovementOpportunity,
     SCIANCategory,
+    TargetCriteria,
+    TargetCustomerInsight,
+    ValuePoint,
     ViabilityResult,
 )
 from app.services.scian_catalog import (
@@ -526,6 +531,26 @@ class LLMService:
                 )
             prompt += "Menciona cómo varían las condiciones a diferentes distancias si hay diferencias significativas.\n"
 
+        # Foot traffic data
+        if analysis_data.zone_traffic_profile:
+            ztp = analysis_data.zone_traffic_profile
+            if isinstance(ztp, dict):
+                prompt += "\nDATOS DE TRÁFICO PEATONAL DE LA ZONA:\n"
+                prompt += f"- Día más concurrido: {ztp.get('busiest_day', 'N/D')}\n"
+                prompt += f"- Día más tranquilo: {ztp.get('quietest_day', 'N/D')}\n"
+                prompt += f"- Tiempo promedio de permanencia: {ztp.get('avg_dwell_time_minutes', 0):.0f} minutos\n"
+                prompt += f"- Datos basados en {ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)} competidores\n"
+                # Peak hours summary
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                if peak_by_day:
+                    prompt += "- Horas pico por día: "
+                    parts = []
+                    for day, hours in peak_by_day.items():
+                        if hours:
+                            parts.append(f"{day}: {', '.join(str(h) + ':00' for h in hours[:2])}")
+                    prompt += "; ".join(parts[:3]) + "\n"
+                prompt += "Incluye recomendaciones sobre horarios óptimos de apertura, cierre y turnos de mayor personal basándote en estos datos de afluencia.\n"
+
         prompt += (
             "El texto debe:\n"
             "- Estar en español\n"
@@ -712,6 +737,26 @@ class LLMService:
             prompt += "\nANÁLISIS MULTI-RADIO:\n"
             for mr in analysis_data.multi_radius_results:
                 prompt += f"- A {mr.radius_km:.0f} km: {mr.competitors} competidores, {mr.complementary} complementarios\n"
+
+        # Foot traffic data
+        if analysis_data.zone_traffic_profile:
+            ztp = analysis_data.zone_traffic_profile
+            if isinstance(ztp, dict):
+                prompt += "\nDATOS DE TRÁFICO PEATONAL DE LA ZONA:\n"
+                prompt += f"- Día más concurrido: {ztp.get('busiest_day', 'N/D')}\n"
+                prompt += f"- Día más tranquilo: {ztp.get('quietest_day', 'N/D')}\n"
+                prompt += f"- Tiempo promedio de permanencia: {ztp.get('avg_dwell_time_minutes', 0):.0f} minutos\n"
+                prompt += f"- Datos basados en {ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)} competidores\n"
+                # Peak hours summary
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                if peak_by_day:
+                    prompt += "- Horas pico por día: "
+                    parts = []
+                    for day, hours in peak_by_day.items():
+                        if hours:
+                            parts.append(f"{day}: {', '.join(str(h) + ':00' for h in hours[:2])}")
+                    prompt += "; ".join(parts[:3]) + "\n"
+                prompt += "Incluye recomendaciones sobre horarios óptimos de apertura, cierre y turnos de mayor personal basándote en estos datos de afluencia.\n"
 
         prompt += (
             "\nGenera entre 3 y 7 recomendaciones estratégicas ACCIONABLES. Cada recomendación debe:\n"
@@ -984,3 +1029,145 @@ class LLMService:
             "- Terminar con una conclusión clara sobre la viabilidad\n"
         )
         return prompt
+
+    # ----------------------------------------------------------------
+    # parse_target_profile
+    # ----------------------------------------------------------------
+
+    async def parse_target_profile(self, profile_text: str) -> TargetCriteria:
+        """Parse free-text target profile into demographic criteria using fast model (8b)."""
+        prompt = (
+            "Eres un experto en demografía mexicana. El usuario describe su cliente ideal así:\n"
+            f'"{profile_text}"\n\n'
+            "Extrae los criterios demográficos y responde ÚNICAMENTE con JSON:\n"
+            '{"gender": "male|female|all", "age_min": int, "age_max": int, '
+            '"socioeconomic_level": "Alto|Medio-Alto|Medio|Bajo|all", '
+            '"min_schooling_years": float_or_null}\n'
+            "Reglas:\n"
+            "- gender: male si menciona hombres, female si mujeres, all si no especifica\n"
+            "- age_min/age_max: rango de edad mencionado (0-99)\n"
+            "- socioeconomic_level: Alto (ejecutivos, alto poder adquisitivo), Medio-Alto (profesionistas), Medio (clase media), Bajo (popular), all si no especifica\n"
+            "- min_schooling_years: años de escolaridad mínima si se menciona, null si no\n"
+        )
+        messages = [
+            {"role": "system", "content": "Extrae criterios demográficos de texto libre. Responde SOLO JSON."},
+            {"role": "user", "content": prompt},
+        ]
+        response = await self._call_groq(messages, temperature=0, model=GROQ_MODEL_FAST)
+        if response:
+            parsed = self._parse_json_response(response)
+            if parsed:
+                try:
+                    return TargetCriteria(
+                        gender=parsed.get("gender", "all"),
+                        age_min=int(parsed.get("age_min", 0)),
+                        age_max=int(parsed.get("age_max", 99)),
+                        socioeconomic_level=parsed.get("socioeconomic_level", "all"),
+                        min_schooling_years=parsed.get("min_schooling_years"),
+                    )
+                except (ValueError, TypeError):
+                    pass
+        # Fallback
+        return TargetCriteria()
+
+    # ----------------------------------------------------------------
+    # format_target_profile
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def format_target_profile(criteria: TargetCriteria) -> str:
+        """Convert TargetCriteria to human-readable Spanish text. Pure function."""
+        parts = []
+        if criteria.gender == "female":
+            parts.append("Mujeres")
+        elif criteria.gender == "male":
+            parts.append("Hombres")
+        else:
+            parts.append("Población general")
+
+        if not (criteria.age_min == 0 and criteria.age_max == 99):
+            parts.append(f"de {criteria.age_min} a {criteria.age_max} años")
+
+        if criteria.socioeconomic_level != "all":
+            parts.append(f"nivel socioeconómico {criteria.socioeconomic_level}")
+
+        if criteria.min_schooling_years is not None:
+            parts.append(f"con al menos {criteria.min_schooling_years:.0f} años de escolaridad")
+
+        return ", ".join(parts)
+
+    # ----------------------------------------------------------------
+    # analyze_competitor_reviews
+    # ----------------------------------------------------------------
+
+    async def analyze_competitor_reviews(
+        self,
+        competitors: list[ClassifiedBusiness],
+        target_profile: str | None = None,
+        target_criteria: TargetCriteria | None = None,
+    ) -> CompetitorReviewAnalysis:
+        """Analyze competitor reviews for value points and opportunities. Uses big model (70b)."""
+        # Collect all reviews
+        positive_reviews = []
+        negative_reviews = []
+        for c in competitors:
+            if not c.google_reviews:
+                continue
+            for rev in c.google_reviews:
+                if rev.rating >= 4:
+                    positive_reviews.append(f"{c.name}: \"{rev.text[:100]}\" ({rev.rating}★)")
+                elif rev.rating <= 2:
+                    negative_reviews.append(f"{c.name}: \"{rev.text[:100]}\" ({rev.rating}★)")
+
+        total_reviews = len(positive_reviews) + len(negative_reviews)
+        if total_reviews < 3:
+            return CompetitorReviewAnalysis(insufficient_data=True)
+
+        prompt = (
+            f"Analiza las reseñas de competidores para un negocio de tipo similar.\n\n"
+            f"RESEÑAS POSITIVAS (4-5★):\n" + "\n".join(positive_reviews[:15]) + "\n\n"
+            f"RESEÑAS NEGATIVAS (1-2★):\n" + "\n".join(negative_reviews[:10]) + "\n\n"
+        )
+
+        if target_profile and target_criteria:
+            profile_desc = LLMService.format_target_profile(target_criteria)
+            prompt += f"PERFIL DEL CLIENTE OBJETIVO: {target_profile} ({profile_desc})\n\n"
+
+        prompt += (
+            'Responde ÚNICAMENTE con JSON:\n'
+            '{\n'
+            '  "value_points": [{"title": "...", "description": "...", "source_type": "positive|negative"}],\n'
+            '  "improvement_opportunities": [{"issue": "...", "recommendation": "..."}],\n'
+            '  "target_customer_insights": [{"title": "...", "explanation": "..."}]\n'
+            '}\n'
+            "Reglas:\n"
+            "- value_points: 3-5 puntos de valor que los clientes valoran (de reseñas positivas)\n"
+            "- improvement_opportunities: 3-5 oportunidades de mejora con recomendación accionable (de reseñas negativas)\n"
+        )
+        if target_profile:
+            prompt += "- target_customer_insights: 3-5 insights de lo que el cliente objetivo valora, cruzando reseñas con el perfil\n"
+        else:
+            prompt += "- target_customer_insights: dejar como lista vacía []\n"
+
+        messages = [
+            {"role": "system", "content": "Eres un consultor de negocios experto. Analiza reseñas de competidores. Responde SOLO JSON en español."},
+            {"role": "user", "content": prompt},
+        ]
+
+        response = await self._call_groq(messages, temperature=0.3, model=GROQ_MODEL)
+        if response:
+            parsed = self._parse_json_response(response)
+            if parsed:
+                try:
+                    vps = [ValuePoint(**vp) for vp in parsed.get("value_points", [])]
+                    ios = [ImprovementOpportunity(**io) for io in parsed.get("improvement_opportunities", [])]
+                    tcis = [TargetCustomerInsight(**tci) for tci in parsed.get("target_customer_insights", [])]
+                    return CompetitorReviewAnalysis(
+                        value_points=vps[:5],
+                        improvement_opportunities=ios[:5],
+                        target_customer_insights=tcis[:5],
+                    )
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.warning("Error parsing competitor review analysis: %s", e)
+
+        return CompetitorReviewAnalysis(insufficient_data=True)

@@ -152,6 +152,80 @@ class ViabilityResult(BaseModel):
         return v
 
 
+class TargetCriteria(BaseModel):
+    """Criterios demográficos extraídos del perfil objetivo."""
+
+    gender: Literal["male", "female", "all"] = "all"
+    age_min: int = 0
+    age_max: int = 99
+    socioeconomic_level: Literal["Alto", "Medio-Alto", "Medio", "Bajo", "all"] = "all"
+    min_schooling_years: float | None = None
+
+
+class TargetMatchResult(BaseModel):
+    """Resultado del cálculo de coincidencia demográfica."""
+
+    percentage: float  # 0.0 - 100.0
+    estimated_population: int
+    breakdown: dict  # {"gender_factor": 0.52, "age_factor": 0.41, "socioeconomic_factor": 1.0}
+
+
+class ValuePoint(BaseModel):
+    """Punto de valor extraído de reseñas de competidores."""
+
+    title: str
+    description: str
+    source_type: Literal["positive", "negative"]
+
+
+class ImprovementOpportunity(BaseModel):
+    """Oportunidad de mejora con recomendación accionable."""
+
+    issue: str
+    recommendation: str
+
+
+class TargetCustomerInsight(BaseModel):
+    """Insight cruzado entre reseñas y perfil objetivo."""
+
+    title: str
+    explanation: str
+
+
+class CompetitorReviewAnalysis(BaseModel):
+    """Resultado completo del análisis de reseñas de competidores."""
+
+    value_points: list[ValuePoint] = []
+    improvement_opportunities: list[ImprovementOpportunity] = []
+    target_customer_insights: list[TargetCustomerInsight] = []
+    insufficient_data: bool = False
+
+
+class FootTrafficForecast(BaseModel):
+    """Pronóstico de tráfico peatonal para un establecimiento."""
+    venue_id: str
+    venue_name: str
+    day_raw: dict[str, list[int]]  # {"Monday": [24 values 0-100], ...}
+    peak_hours: list[dict] = []
+    quiet_hours: list[dict] = []
+    surge_hours: list[dict] = []
+    dwell_time_min: int = 0
+    dwell_time_max: int = 0
+    dwell_time_avg: int = 0
+
+
+class ZoneTrafficProfile(BaseModel):
+    """Perfil de tráfico peatonal agregado de la zona."""
+    hourly_matrix: dict[str, list[float]]
+    peak_hours_by_day: dict[str, list[int]]
+    quiet_hours_by_day: dict[str, list[int]]
+    busiest_day: str
+    quietest_day: str
+    avg_dwell_time_minutes: float
+    venues_with_data: int
+    venues_total: int
+
+
 class AnalysisResult(BaseModel):
     """Complete analysis result sent to the frontend."""
 
@@ -166,6 +240,16 @@ class AnalysisResult(BaseModel):
     timestamp: str
     strategic_recommendations: list[str] = []
     multi_radius_results: list[MultiRadiusResult] = []
+    # Target market analysis fields (optional)
+    target_profile: str | None = None
+    target_criteria: dict | None = None
+    target_match_percentage: float | None = None
+    target_match_population: int | None = None
+    target_match_breakdown: dict | None = None
+    competitor_value_points: list[dict] | None = None
+    competitor_improvement_opportunities: list[dict] | None = None
+    target_customer_insights: list[dict] | None = None
+    zone_traffic_profile: dict | None = None  # ZoneTrafficProfile serialized
 
 
 class APIError(BaseModel):
