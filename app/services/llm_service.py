@@ -531,6 +531,26 @@ class LLMService:
                 )
             prompt += "Menciona cómo varían las condiciones a diferentes distancias si hay diferencias significativas.\n"
 
+        # Foot traffic data
+        if analysis_data.zone_traffic_profile:
+            ztp = analysis_data.zone_traffic_profile
+            if isinstance(ztp, dict):
+                prompt += "\nDATOS DE TRÁFICO PEATONAL DE LA ZONA:\n"
+                prompt += f"- Día más concurrido: {ztp.get('busiest_day', 'N/D')}\n"
+                prompt += f"- Día más tranquilo: {ztp.get('quietest_day', 'N/D')}\n"
+                prompt += f"- Tiempo promedio de permanencia: {ztp.get('avg_dwell_time_minutes', 0):.0f} minutos\n"
+                prompt += f"- Datos basados en {ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)} competidores\n"
+                # Peak hours summary
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                if peak_by_day:
+                    prompt += "- Horas pico por día: "
+                    parts = []
+                    for day, hours in peak_by_day.items():
+                        if hours:
+                            parts.append(f"{day}: {', '.join(str(h) + ':00' for h in hours[:2])}")
+                    prompt += "; ".join(parts[:3]) + "\n"
+                prompt += "Incluye recomendaciones sobre horarios óptimos de apertura, cierre y turnos de mayor personal basándote en estos datos de afluencia.\n"
+
         prompt += (
             "El texto debe:\n"
             "- Estar en español\n"
@@ -717,6 +737,26 @@ class LLMService:
             prompt += "\nANÁLISIS MULTI-RADIO:\n"
             for mr in analysis_data.multi_radius_results:
                 prompt += f"- A {mr.radius_km:.0f} km: {mr.competitors} competidores, {mr.complementary} complementarios\n"
+
+        # Foot traffic data
+        if analysis_data.zone_traffic_profile:
+            ztp = analysis_data.zone_traffic_profile
+            if isinstance(ztp, dict):
+                prompt += "\nDATOS DE TRÁFICO PEATONAL DE LA ZONA:\n"
+                prompt += f"- Día más concurrido: {ztp.get('busiest_day', 'N/D')}\n"
+                prompt += f"- Día más tranquilo: {ztp.get('quietest_day', 'N/D')}\n"
+                prompt += f"- Tiempo promedio de permanencia: {ztp.get('avg_dwell_time_minutes', 0):.0f} minutos\n"
+                prompt += f"- Datos basados en {ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)} competidores\n"
+                # Peak hours summary
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                if peak_by_day:
+                    prompt += "- Horas pico por día: "
+                    parts = []
+                    for day, hours in peak_by_day.items():
+                        if hours:
+                            parts.append(f"{day}: {', '.join(str(h) + ':00' for h in hours[:2])}")
+                    prompt += "; ".join(parts[:3]) + "\n"
+                prompt += "Incluye recomendaciones sobre horarios óptimos de apertura, cierre y turnos de mayor personal basándote en estos datos de afluencia.\n"
 
         prompt += (
             "\nGenera entre 3 y 7 recomendaciones estratégicas ACCIONABLES. Cada recomendación debe:\n"

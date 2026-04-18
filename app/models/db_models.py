@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Float, Integer, String
+from sqlalchemy import Column, DateTime, Float, Index, Integer, JSON, String
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.sql import func
 from geoalchemy2 import Geometry
 
 
@@ -59,3 +60,19 @@ class AGEBDemographics(Base):
 
     def __repr__(self) -> str:
         return f"<AGEBDemographics(id='{self.id}', pobtot={self.pobtot})>"
+
+
+class BestTimeCache(Base):
+    __tablename__ = "besttime_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    venue_id = Column(String(100), index=True)
+    venue_name = Column(String(500), nullable=False)
+    venue_address = Column(String(500), nullable=False)
+    forecast_data = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_besttime_cache_name_address", "venue_name", "venue_address"),
+    )

@@ -201,6 +201,31 @@ class CompetitorReviewAnalysis(BaseModel):
     insufficient_data: bool = False
 
 
+class FootTrafficForecast(BaseModel):
+    """Pronóstico de tráfico peatonal para un establecimiento."""
+    venue_id: str
+    venue_name: str
+    day_raw: dict[str, list[int]]  # {"Monday": [24 values 0-100], ...}
+    peak_hours: list[dict] = []
+    quiet_hours: list[dict] = []
+    surge_hours: list[dict] = []
+    dwell_time_min: int = 0
+    dwell_time_max: int = 0
+    dwell_time_avg: int = 0
+
+
+class ZoneTrafficProfile(BaseModel):
+    """Perfil de tráfico peatonal agregado de la zona."""
+    hourly_matrix: dict[str, list[float]]
+    peak_hours_by_day: dict[str, list[int]]
+    quiet_hours_by_day: dict[str, list[int]]
+    busiest_day: str
+    quietest_day: str
+    avg_dwell_time_minutes: float
+    venues_with_data: int
+    venues_total: int
+
+
 class AnalysisResult(BaseModel):
     """Complete analysis result sent to the frontend."""
 
@@ -224,6 +249,7 @@ class AnalysisResult(BaseModel):
     competitor_value_points: list[dict] | None = None
     competitor_improvement_opportunities: list[dict] | None = None
     target_customer_insights: list[dict] | None = None
+    zone_traffic_profile: dict | None = None  # ZoneTrafficProfile serialized
 
 
 class APIError(BaseModel):

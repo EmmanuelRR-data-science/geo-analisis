@@ -89,9 +89,8 @@
           <label>Aliados Google (opcional)</label>
           <div id="google-ally-tags" class="tag-container"></div>
           <div class="filter-input-group">
-            <select id="google-ally-select" class="google-category-select">
-              <option value="">Seleccionar categoría Google…</option>
-            </select>
+            <input id="google-ally-input" type="text" placeholder="Buscar categoría Google…" class="google-category-input" />
+            <ul id="google-ally-dropdown" class="google-category-dropdown hidden"></ul>
           </div>
         </div>
 
@@ -100,9 +99,8 @@
           <label>Competidores Google (opcional)</label>
           <div id="google-competitor-tags" class="tag-container"></div>
           <div class="filter-input-group">
-            <select id="google-competitor-select" class="google-category-select">
-              <option value="">Seleccionar categoría Google…</option>
-            </select>
+            <input id="google-competitor-input" type="text" placeholder="Buscar categoría Google…" class="google-category-input" />
+            <ul id="google-competitor-dropdown" class="google-category-dropdown hidden"></ul>
           </div>
         </div>
 
@@ -201,6 +199,13 @@
       <section id="environment-vars-section" class="environment-vars-section hidden">
         <h2>Variables de Entorno</h2>
         <div id="environment-vars-content"></div>
+      </section>
+
+      <!-- Foot traffic section -->
+      <section id="foot-traffic-section" class="foot-traffic-section hidden">
+        <h2>Tráfico Peatonal de la Zona</h2>
+        <div id="foot-traffic-heatmap"></div>
+        <div id="foot-traffic-summary"></div>
       </section>
 
       <!-- Export buttons (hidden until analysis) -->

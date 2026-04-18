@@ -22,6 +22,7 @@ from app.services.export_service import ExportService
 from app.services.analysis_engine import AnalysisEngine
 from app.services.environment_calculator import EnvironmentCalculator
 from app.services.target_market_service import TargetMarketService
+from app.services.foot_traffic_service import FootTrafficService
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,16 @@ async def analyze(request: Request):
     classified = await llm_service.classify_businesses(interpretation, businesses, user_filters=user_filters)
     viability = analysis_engine.calculate_viability(classified, ageb_data)
 
+    # Foot traffic analysis (BestTime.app)
+    foot_traffic_service = FootTrafficService()
+    foot_traffic_task = None
+    if os.getenv("BEST_TIME_API_KEY"):
+        competitors_for_traffic = [b for b in classified if b.classification == "competitor"]
+        if competitors_for_traffic:
+            foot_traffic_task = asyncio.create_task(
+                foot_traffic_service.get_zone_traffic_profile(competitors_for_traffic, zone.name)
+            )
+
     # Calculate target market match percentage
     target_match = None
     if target_criteria:
@@ -291,6 +302,16 @@ async def analyze(request: Request):
         except Exception as e:
             warnings.append(f"Error procesando radio {r_km} km: {e}")
 
+    zone_traffic_profile = None
+    if foot_traffic_task:
+        try:
+            traffic_result, traffic_warnings = await foot_traffic_task
+            warnings.extend(traffic_warnings)
+            if traffic_result:
+                zone_traffic_profile = traffic_result.model_dump()
+        except Exception as e:
+            warnings.append(f"Error en análisis de tráfico peatonal: {e}")
+
     result = AnalysisResult(
         analysis_id=str(uuid.uuid4()),
         business_type=interpretation,
@@ -310,6 +331,7 @@ async def analyze(request: Request):
         competitor_value_points=[vp.model_dump() for vp in review_analysis.value_points] if review_analysis and not review_analysis.insufficient_data else None,
         competitor_improvement_opportunities=[io.model_dump() for io in review_analysis.improvement_opportunities] if review_analysis and not review_analysis.insufficient_data else None,
         target_customer_insights=[tci.model_dump() for tci in review_analysis.target_customer_insights] if review_analysis and review_analysis.target_customer_insights else None,
+        zone_traffic_profile=zone_traffic_profile,
     )
 
     # Step 4: Generate recommendation (uses big model)

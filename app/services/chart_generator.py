@@ -108,89 +108,111 @@ def extract_top_complaints(competitors: list[Any], n: int = 5) -> list[dict]:
     return low_reviews[:n]
 
 
-def generate_schedule_opportunity_chart(competitors: list[Any]) -> bytes | None:
-    """Generate a heatmap showing opportunity windows by day/hour.
+def extract_schedule_data(competitors: list[Any]) -> list[dict] | None:
+    """Extract schedule data as a list of dicts for table rendering.
 
-    Analyzes competitor opening hours to find days with less competition.
-    Green = high opportunity (few competitors open), Red = low opportunity (many open).
+    Returns list of: {"day": str, "open": int, "closed": int, "total": int, "open_pct": float}
+    Returns None if insufficient data (< 2 competitors with hours).
+    """
+    days_order = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+    days_aliases = {
+        'lunes': 0, 'monday': 0,
+        'martes': 1, 'tuesday': 1,
+        'miércoles': 2, 'miercoles': 2, 'wednesday': 2,
+        'jueves': 3, 'thursday': 3,
+        'viernes': 4, 'friday': 4,
+        'sábado': 5, 'sabado': 5, 'saturday': 5,
+        'domingo': 6, 'sunday': 6,
+    }
+
+    day_counts = [0] * 7
+    total_with_hours = 0
+
+    for c in competitors:
+        if not c.google_hours:
+            continue
+        total_with_hours += 1
+        for h in c.google_hours:
+            h_lower = h.lower().strip()
+            for alias, idx in days_aliases.items():
+                if h_lower.startswith(alias):
+                    if 'cerrado' not in h_lower and 'closed' not in h_lower:
+                        day_counts[idx] += 1
+                    break
+
+    if total_with_hours < 2:
+        return None
+
+    result = []
+    for i, day in enumerate(days_order):
+        open_count = day_counts[i]
+        closed_count = total_with_hours - open_count
+        open_pct = round(open_count / total_with_hours * 100, 1) if total_with_hours > 0 else 0
+        result.append({
+            "day": day,
+            "open": open_count,
+            "closed": closed_count,
+            "total": total_with_hours,
+            "open_pct": open_pct,
+        })
+    return result
+
+
+def generate_schedule_opportunity_chart(competitors: list[Any]) -> bytes | None:
+    """Generate a bar chart showing competitors open by day of week.
+
+    Bar height = number of competitors open that day.
+    Darker blue = more competition. Annotation shows closed/total at bar top.
     """
     try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        import numpy as np
 
-        # Parse competitor hours into day coverage
-        days_order = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
-        days_aliases = {
-            'lunes': 0, 'monday': 0,
-            'martes': 1, 'tuesday': 1,
-            'miércoles': 2, 'miercoles': 2, 'wednesday': 2,
-            'jueves': 3, 'thursday': 3,
-            'viernes': 4, 'friday': 4,
-            'sábado': 5, 'sabado': 5, 'saturday': 5,
-            'domingo': 6, 'sunday': 6,
-        }
-
-        # Count how many competitors are open each day
-        day_counts = [0] * 7
-        total_with_hours = 0
-
-        for c in competitors:
-            if not c.google_hours:
-                continue
-            total_with_hours += 1
-            for h in c.google_hours:
-                h_lower = h.lower().strip()
-                # Try to match day name at the start
-                for alias, idx in days_aliases.items():
-                    if h_lower.startswith(alias):
-                        # Check if it says "closed" or "cerrado"
-                        if 'cerrado' not in h_lower and 'closed' not in h_lower:
-                            day_counts[idx] += 1
-                        break
-
-        if total_with_hours < 2:
+        schedule_data = extract_schedule_data(competitors)
+        if schedule_data is None:
             return None
 
-        # Calculate opportunity score (inverse of coverage)
-        max_count = max(day_counts) if max(day_counts) > 0 else 1
-        opportunity = [round((1 - count / max_count) * 100) for count in day_counts]
+        days = [d["day"] for d in schedule_data]
+        open_counts = [d["open"] for d in schedule_data]
+        total = schedule_data[0]["total"]
+        max_open = max(open_counts) if max(open_counts) > 0 else 1
 
         fig, ax = plt.subplots(figsize=(7, 3.5))
 
-        # Create bar chart with gradient colors
+        # Blue bars with intensity based on how many are open (darker = more competition)
         colors = []
-        for opp in opportunity:
-            if opp >= 70:
-                colors.append('#22c55e')  # High opportunity - green
-            elif opp >= 40:
-                colors.append('#f59e0b')  # Medium - amber
-            else:
-                colors.append('#ef4444')  # Low opportunity - red
+        for count in open_counts:
+            intensity = count / max_open  # 0..1
+            # Interpolate from light blue (#93c5fd) to dark blue (#1e3a5f)
+            r = int(0x93 + (0x1e - 0x93) * intensity)
+            g = int(0xc5 + (0x3a - 0xc5) * intensity)
+            b = int(0xfd + (0x5f - 0xfd) * intensity)
+            colors.append(f'#{r:02x}{g:02x}{b:02x}')
 
-        bars = ax.bar(range(7), opportunity, color=colors, width=0.7, edgecolor='white', linewidth=0.5)
+        bars = ax.bar(range(7), open_counts, color=colors, width=0.7, edgecolor='white', linewidth=0.5)
 
         ax.set_xticks(range(7))
-        ax.set_xticklabels(days_order, fontsize=8, rotation=0)
-        ax.set_ylabel('Oportunidad (%)', fontsize=8)
-        ax.set_ylim(0, 110)
-        ax.set_title('Oportunidad por Día de la Semana', fontsize=10, fontweight='bold', color='#2c3e50')
+        ax.set_xticklabels(days, fontsize=8, rotation=0)
+        ax.set_ylabel('Competidores abiertos', fontsize=8)
+        ax.set_ylim(0, total + max(1, total * 0.25))
+        ax.set_title('Competidores Abiertos por Día de la Semana', fontsize=10, fontweight='bold', color='#2c3e50')
 
-        # Add value labels on bars
-        for bar, opp, count in zip(bars, opportunity, day_counts):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 2,
-                    f'{opp}%', ha='center', va='bottom', fontsize=8, fontweight='bold', color='#374151')
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height()/2,
-                    f'{count}/{total_with_hours}', ha='center', va='center', fontsize=7, color='white', fontweight='bold')
+        # Annotations on bars: closed/total at top, open count inside bar
+        for bar, row in zip(bars, schedule_data):
+            # Open count inside the bar
+            if row["open"] > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() / 2,
+                        str(row["open"]), ha='center', va='center',
+                        fontsize=9, fontweight='bold', color='white')
+            # closed/total annotation above bar
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15,
+                    f'{row["closed"]} cerrados / {row["total"]} total',
+                    ha='center', va='bottom', fontsize=6.5, color='#374151')
 
-        # Add legend
-        ax.text(0.02, 0.95, '■ Alta oportunidad (pocos competidores)', transform=ax.transAxes,
-                fontsize=7, color='#22c55e', va='top')
-        ax.text(0.02, 0.88, '■ Media oportunidad', transform=ax.transAxes,
-                fontsize=7, color='#f59e0b', va='top')
-        ax.text(0.02, 0.81, '■ Baja oportunidad (muchos competidores)', transform=ax.transAxes,
-                fontsize=7, color='#ef4444', va='top')
+        # Legend
+        ax.text(0.02, 0.95, 'Más competidores abiertos = más competencia ese día',
+                transform=ax.transAxes, fontsize=7, color='#1e3a5f', va='top', style='italic')
 
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -203,4 +225,65 @@ def generate_schedule_opportunity_chart(competitors: list[Any]) -> bytes | None:
         return buf.read()
     except Exception as e:
         logger.warning("Could not generate schedule chart: %s", e)
+        return None
+
+
+def generate_foot_traffic_chart(zone_traffic_profile: dict) -> bytes | None:
+    """Generate a bar chart showing average foot traffic by day of week."""
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        days_es = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+        matrix = zone_traffic_profile.get('hourly_matrix', {})
+        if not matrix:
+            return None
+
+        day_avgs = []
+        for day in days_order:
+            hours = matrix.get(day, [0] * 24)
+            non_zero = [h for h in hours if h > 0]
+            avg = sum(non_zero) / len(non_zero) if non_zero else 0
+            day_avgs.append(round(avg, 1))
+
+        if max(day_avgs) == 0:
+            return None
+
+        fig, ax = plt.subplots(figsize=(7, 3.5))
+        max_avg = max(day_avgs) if max(day_avgs) > 0 else 1
+        colors = []
+        for avg in day_avgs:
+            intensity = avg / max_avg
+            if intensity >= 0.7:
+                colors.append('#ef4444')
+            elif intensity >= 0.4:
+                colors.append('#f59e0b')
+            else:
+                colors.append('#22c55e')
+
+        bars = ax.bar(range(7), day_avgs, color=colors, width=0.7, edgecolor='white', linewidth=0.5)
+        ax.set_xticks(range(7))
+        ax.set_xticklabels(days_es, fontsize=8)
+        ax.set_ylabel('Afluencia promedio (%)', fontsize=8)
+        ax.set_ylim(0, max(day_avgs) * 1.2)
+        ax.set_title('Tráfico Peatonal Promedio por Día', fontsize=10, fontweight='bold', color='#2c3e50')
+
+        for bar, avg in zip(bars, day_avgs):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                    f'{avg:.0f}%', ha='center', va='bottom', fontsize=8, fontweight='bold', color='#374151')
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        logger.warning("Could not generate foot traffic chart: %s", e)
         return None

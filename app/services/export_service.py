@@ -420,14 +420,14 @@ class ExportService:
         # --- Gráficas de análisis de competidores ---
         competitors = [b for b in result.businesses if b.classification == "competitor"]
         if competitors:
-            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart
+            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart, extract_schedule_data
 
             # Schedule opportunity chart
             schedule_png = generate_schedule_opportunity_chart(competitors)
             if schedule_png:
                 if pdf.get_y() > 140:
                     pdf.add_page()
-                _section(pdf, "Oportunidad por Día de la Semana")
+                _section(pdf, "Análisis de Horarios de Competidores")
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                         tmp.write(schedule_png)
@@ -437,6 +437,58 @@ class ExportService:
                     os.unlink(tmp_path)
                 except Exception as e:
                     logger.warning("Could not embed schedule chart: %s", e)
+                pdf.ln(4)
+
+            # Schedule data table
+            schedule_data = extract_schedule_data(competitors)
+            if schedule_data:
+                pdf.ln(2)
+                # Table header
+                pdf.set_font(_F, "B", 8)
+                pdf.set_text_color(44, 62, 80)
+                col_w = [28, 24, 24, 24, 28, 62]
+                headers = ["Día", "Abiertos", "Cerrados", "Total", "% Abiertos", "Interpretación"]
+                for i, h in enumerate(headers):
+                    pdf.cell(col_w[i], 6, h, border=1, align="C")
+                pdf.ln()
+                # Table rows
+                pdf.set_font(_F, "", 8)
+                pdf.set_text_color(60, 60, 60)
+                for row in schedule_data:
+                    # Interpretation based on open percentage
+                    if row["open_pct"] >= 80:
+                        interp = "Alta competencia"
+                    elif row["open_pct"] >= 50:
+                        interp = "Competencia moderada"
+                    else:
+                        interp = "Baja competencia (oportunidad)"
+                    pdf.cell(col_w[0], 5, row["day"], border=1, align="C")
+                    pdf.cell(col_w[1], 5, str(row["open"]), border=1, align="C")
+                    pdf.cell(col_w[2], 5, str(row["closed"]), border=1, align="C")
+                    pdf.cell(col_w[3], 5, str(row["total"]), border=1, align="C")
+                    pdf.cell(col_w[4], 5, f"{row['open_pct']:.0f}%", border=1, align="C")
+                    pdf.cell(col_w[5], 5, interp, border=1, align="C")
+                    pdf.ln()
+                pdf.ln(3)
+
+                # AI explanation text
+                # Find the day with least competition and most competition
+                min_day = min(schedule_data, key=lambda x: x["open_pct"])
+                max_day = max(schedule_data, key=lambda x: x["open_pct"])
+
+                explanation = (
+                    f"Esta tabla muestra cuántos de los {schedule_data[0]['total']} competidores identificados "
+                    f"operan cada día de la semana. "
+                    f"El día con menor competencia es {min_day['day']} ({min_day['open']} de {min_day['total']} abiertos, "
+                    f"{min_day['open_pct']:.0f}%), lo que representa una oportunidad para captar clientes desatendidos. "
+                    f"El día con mayor competencia es {max_day['day']} ({max_day['open']} de {max_day['total']} abiertos, "
+                    f"{max_day['open_pct']:.0f}%), donde será necesario diferenciarse más para competir. "
+                    f"Considere ajustar sus horarios de operación para aprovechar los días con menor presencia de competidores."
+                )
+
+                pdf.set_font(_F, "I", 9)
+                pdf.set_text_color(80, 80, 80)
+                pdf.multi_cell(0, 4.5, _clean_text(explanation))
                 pdf.ln(4)
 
             # Ratings chart
@@ -491,6 +543,76 @@ class ExportService:
                     pdf.multi_cell(0, 4.5, f'"{_clean_text(complaint["text"])}"')
                     pdf.ln(2)
                 pdf.ln(4)
+
+        # --- Tráfico Peatonal ---
+        if result.zone_traffic_profile:
+            ztp = result.zone_traffic_profile
+            if isinstance(ztp, dict) and ztp.get('hourly_matrix'):
+                from app.services.chart_generator import generate_foot_traffic_chart
+
+                if pdf.get_y() > 140:
+                    pdf.add_page()
+                _section(pdf, "Análisis de Tráfico Peatonal")
+
+                # Chart
+                traffic_png = generate_foot_traffic_chart(ztp)
+                if traffic_png:
+                    try:
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                            tmp.write(traffic_png)
+                            tmp_path = tmp.name
+                        pdf.image(tmp_path, x=15, w=170)
+                        import os
+                        os.unlink(tmp_path)
+                    except Exception as e:
+                        logger.warning("Could not embed foot traffic chart: %s", e)
+                    pdf.ln(4)
+
+                # Summary
+                days_es = {'Monday':'Lunes','Tuesday':'Martes','Wednesday':'Miércoles','Thursday':'Jueves','Friday':'Viernes','Saturday':'Sábado','Sunday':'Domingo'}
+                busiest = days_es.get(ztp.get('busiest_day',''), ztp.get('busiest_day',''))
+                quietest = days_es.get(ztp.get('quietest_day',''), ztp.get('quietest_day',''))
+                _row(pdf, "Día más concurrido", busiest)
+                _row(pdf, "Día más tranquilo", quietest)
+                _row(pdf, "Permanencia promedio", f"{ztp.get('avg_dwell_time_minutes', 0):.0f} minutos")
+                _row(pdf, "Competidores con datos", f"{ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)}")
+                pdf.ln(2)
+
+                # Peak/quiet hours table
+                peak_by_day = ztp.get('peak_hours_by_day', {})
+                quiet_by_day = ztp.get('quiet_hours_by_day', {})
+                if peak_by_day:
+                    _sub(pdf, "Horas Pico y Tranquilas por Día")
+                    pdf.set_font(_F, "B", 8)
+                    pdf.set_text_color(44, 62, 80)
+                    col_w = [30, 50, 50, 60]
+                    for i, h in enumerate(["Día", "Horas pico", "Horas tranquilas", "Interpretación"]):
+                        pdf.cell(col_w[i], 6, h, border=1, align="C")
+                    pdf.ln()
+                    pdf.set_font(_F, "", 8)
+                    pdf.set_text_color(60, 60, 60)
+                    for day_en in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']:
+                        day_es = days_es.get(day_en, day_en)
+                        peaks = peak_by_day.get(day_en, [])
+                        quiets = quiet_by_day.get(day_en, [])
+                        peak_str = ", ".join(f"{h}:00" for h in peaks[:3]) if peaks else "—"
+                        quiet_str = ", ".join(f"{h}:00" for h in quiets[:3]) if quiets else "—"
+                        # Interpretation
+                        matrix = ztp.get('hourly_matrix', {})
+                        day_hours = matrix.get(day_en, [])
+                        day_avg = sum(day_hours) / len(day_hours) if day_hours else 0
+                        if day_avg >= 50:
+                            interp = "Alta afluencia"
+                        elif day_avg >= 25:
+                            interp = "Afluencia moderada"
+                        else:
+                            interp = "Baja afluencia"
+                        pdf.cell(col_w[0], 5, day_es, border=1, align="C")
+                        pdf.cell(col_w[1], 5, peak_str, border=1, align="C")
+                        pdf.cell(col_w[2], 5, quiet_str, border=1, align="C")
+                        pdf.cell(col_w[3], 5, interp, border=1, align="C")
+                        pdf.ln()
+                    pdf.ln(4)
 
         # --- Mapa ---
         if map_image_bytes:

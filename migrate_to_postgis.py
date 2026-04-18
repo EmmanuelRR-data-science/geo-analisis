@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 from sqlalchemy import text
 from app.db import get_engine
-from app.models.db_models import Base
+from app.models.db_models import Base, BestTimeCache  # noqa: F401
 
 
 # Columns that should be stored as Float
