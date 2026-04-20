@@ -111,9 +111,16 @@ class FootTrafficService:
         busiest_day = max(day_sums, key=day_sums.get) if day_sums else "Monday"
         quietest_day = min(day_sums, key=day_sums.get) if day_sums else "Sunday"
 
-        # Average dwell time
-        dwell_times = [f.dwell_time_avg for f in forecasts if f.dwell_time_avg > 0]
-        avg_dwell = round(sum(dwell_times) / len(dwell_times), 1) if dwell_times else 0.0
+        # Average dwell time (robust against extreme outliers)
+        dwell_times = [float(f.dwell_time_avg) for f in forecasts if f.dwell_time_avg and f.dwell_time_avg > 0]
+        bounded_dwell_times = [v for v in dwell_times if 5 <= v <= 180]
+        if bounded_dwell_times:
+            avg_dwell = round(sum(bounded_dwell_times) / len(bounded_dwell_times), 1)
+        elif dwell_times:
+            # Fallback if all returned values are extreme: cap to keep UI metrics readable
+            avg_dwell = round(sum(min(v, 180.0) for v in dwell_times) / len(dwell_times), 1)
+        else:
+            avg_dwell = 0.0
 
         source_venues = []
         for f in forecasts:

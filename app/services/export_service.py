@@ -601,8 +601,8 @@ class ExportService:
                         pdf.cell(0, 5, f"{idx}. {venue_name}", new_x="LMARGIN", new_y="NEXT")
                         pdf.set_font(_F, "", 8)
                         pdf.set_text_color(100, 100, 100)
-                        pdf.multi_cell(0, 4, f"Categoría: {venue_category}")
-                        pdf.multi_cell(0, 4, f"Horario reportado: {opening_summary}")
+                        pdf.multi_cell(0, 4, f"Categoría: {venue_category}", new_x="LMARGIN", new_y="NEXT")
+                        pdf.multi_cell(0, 4, f"Horario reportado: {opening_summary}", new_x="LMARGIN", new_y="NEXT")
                         pdf.ln(1)
                     pdf.ln(2)
 
