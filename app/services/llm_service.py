@@ -305,6 +305,12 @@ class LLMService:
                         cls = info.get("classification", "unclassified")
                         rel = info.get("relevance", "low")
                         result.append(ClassifiedBusiness(**b.model_dump(), classification=cls, relevance=rel))
+                    if result and all(b.classification == "unclassified" for b in result):
+                        logger.warning(
+                            "LLM classification returned all businesses as unclassified for '%s' — using fallback rules",
+                            user_business.original_input,
+                        )
+                        return self._fallback_classify_businesses(user_business, businesses, user_filters)
                     return result
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning("Error parseando clasificación LLM: %s", e)
