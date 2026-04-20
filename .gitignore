@@ -4,6 +4,10 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
 
 # Environment
 .env
@@ -17,10 +21,19 @@ build/
 dist/
 *.spec
 *.egg-info/
+htmlcov/
+.coverage
+*.log
 
 # Data files (large)
 *.xlsx
 RESAGEBURB_09XLSX20.xlsx
+# Local artifacts (do not version)
+chrome_profile_notebooklm/
+chrome_profile_notebooklm_imported/
+geoanalisis-deploy.zip
+_tmp_aplicacion_edm_extracted.txt
+docs/agent_outputs/
 
 # OS
 .DS_Store

@@ -6,7 +6,6 @@ import math
 
 from app.models.schemas import AGEBData, ClassifiedBusiness, ViabilityResult
 
-
 # Sigmoid parameters for competition factor
 _SIGMOID_MIDPOINT = 5  # midpoint: ~5 competitors is "average"
 _SIGMOID_K = 0.6       # steepness of the sigmoid curve

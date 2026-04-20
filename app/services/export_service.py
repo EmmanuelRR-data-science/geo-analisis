@@ -6,7 +6,6 @@ import html as html_mod
 import json
 import logging
 import tempfile
-import base64
 from datetime import datetime, timezone
 
 from app.models.schemas import AnalysisResult
@@ -15,6 +14,25 @@ logger = logging.getLogger(__name__)
 
 # Font family — will be set to "Uni" (Arial Unicode) or "Helvetica" (fallback)
 _F = "Helvetica"
+_DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+_DAY_NAMES_ES = {
+    "Monday": "Lunes",
+    "Tuesday": "Martes",
+    "Wednesday": "Miércoles",
+    "Thursday": "Jueves",
+    "Friday": "Viernes",
+    "Saturday": "Sábado",
+    "Sunday": "Domingo",
+}
+_DAY_SHORT_ES = {
+    "Monday": "Lun",
+    "Tuesday": "Mar",
+    "Wednesday": "Mié",
+    "Thursday": "Jue",
+    "Friday": "Vie",
+    "Saturday": "Sáb",
+    "Sunday": "Dom",
+}
 
 
 def _setup_pdf_font(pdf) -> str:
@@ -83,6 +101,20 @@ def _clean_text(text: str) -> str:
     return text.encode("latin-1", "replace").decode("latin-1")
 
 
+def _format_opening_hours_summary(opening_hours_by_day: dict[str, str]) -> str:
+    """Format opening ranges by day into a compact human-readable summary."""
+    if not opening_hours_by_day:
+        return "Horario no disponible"
+    parts = []
+    for day in _DAY_ORDER:
+        day_range = opening_hours_by_day.get(day)
+        if day_range:
+            parts.append(f"{_DAY_SHORT_ES.get(day, day)}: {day_range}")
+    if not parts:
+        return "Horario no disponible"
+    return " | ".join(parts)
+
+
 class ExportService:
     """Generates PDF and HTML reports from analysis results."""
 
@@ -133,10 +165,45 @@ class ExportService:
         pdf.set_font(_F, "B", 16)
         pdf.cell(0, 25, f"  {category}", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
+        # --- 1) Decisión y acciones prioritarias ---
+        _section(pdf, "1) Decisión Ejecutiva")
+        pdf.set_font(_F, "", 10)
+        pdf.set_text_color(60, 60, 60)
+        pdf.multi_cell(0, 5.5, recommendation)
+        pdf.ln(2)
+
+        if result.strategic_recommendations:
+            _sub(pdf, "Acciones Prioritarias")
+            for idx, rec in enumerate(result.strategic_recommendations, 1):
+                if pdf.get_y() > 260:
+                    pdf.add_page()
+                pdf.set_font(_F, "B", 10)
+                pdf.set_text_color(44, 62, 80)
+                pdf.cell(8, 6, f"{idx}.")
+                pdf.set_font(_F, "", 10)
+                pdf.set_text_color(60, 60, 60)
+                pdf.multi_cell(0, 5.5, _clean_text(rec))
+                pdf.ln(1)
+        pdf.ln(2)
+
+        # --- 2) Evidencia de viabilidad ---
+        _section(pdf, "2) Evidencia de Viabilidad")
+        _sub(pdf, "Desglose de Factores")
+        _factor_labels = {
+            "competencia": "Competencia",
+            "complementarios": "Complementarios",
+            "demografico": "Demográfico",
+            "socioeconomico": "Socioeconómico",
+        }
+        for factor, val in result.viability.factor_scores.items():
+            label = _factor_labels.get(factor, factor.replace("_", " ").capitalize())
+            _row(pdf, label, f"{val:.1f} / 100")
+        _row(pdf, "Completitud de datos", f"{result.viability.data_completeness * 100:.0f}%")
+        pdf.ln(4)
 
         # --- Ecosistema comercial ---
         unclassified = len(result.businesses) - competitors - complementary
-        _section(pdf, "Ecosistema Comercial")
+        _section(pdf, "2.1) Ecosistema Comercial")
         _row(pdf, "Competidores directos", str(competitors))
         _row(pdf, "Negocios complementarios", str(complementary))
         if unclassified > 0:
@@ -146,7 +213,7 @@ class ExportService:
 
         # --- Análisis Multi-Radio ---
         if result.multi_radius_results:
-            _section(pdf, "Análisis Multi-Radio")
+            _section(pdf, "2.2) Análisis Multi-Radio")
             # Table header
             pdf.set_font(_F, "B", 9)
             pdf.set_text_color(44, 62, 80)
@@ -169,39 +236,9 @@ class ExportService:
                 pdf.ln()
             pdf.ln(4)
 
-        # --- Detalle de negocios ---
-        if result.businesses:
-            _section(pdf, "Detalle de Negocios Encontrados")
-            groups = [
-                ("Competidores", [b for b in result.businesses if b.classification == "competitor"]),
-                ("Complementarios", [b for b in result.businesses if b.classification == "complementary"]),
-                ("Sin clasificar", [b for b in result.businesses if b.classification == "unclassified"]),
-            ]
-            for group_label, biz_list in groups:
-                if not biz_list:
-                    continue
-                _sub(pdf, f"{group_label} ({len(biz_list)})")
-                for b in biz_list:
-                    if pdf.get_y() > 260:
-                        pdf.add_page()
-                    pdf.set_font(_F, "B", 9)
-                    pdf.set_text_color(44, 62, 80)
-                    pdf.cell(0, 5, b.name, new_x="LMARGIN", new_y="NEXT")
-                    pdf.set_font(_F, "", 8)
-                    pdf.set_text_color(100, 100, 100)
-                    details = b.category
-                    if b.google_rating is not None:
-                        details += f"  |  Rating: {b.google_rating:.1f}"
-                    if b.google_reviews_count is not None:
-                        details += f"  |  {b.google_reviews_count} reseñas"
-                    if b.denue_employee_stratum:
-                        details += f"  |  Personal: {b.denue_employee_stratum}"
-                    pdf.cell(0, 4, details, new_x="LMARGIN", new_y="NEXT")
-                    pdf.ln(2)
-            pdf.ln(2)
 
         # --- Datos demográficos AGEB ---
-        _section(pdf, "Datos Demográficos (INEGI — AGEB)")
+        _section(pdf, "3) Contexto Demográfico y de Mercado (INEGI — AGEB)")
         _row(pdf, "AGEBs analizadas", str(ageb.ageb_count))
         _row(pdf, "Población total", f"{ageb.total_population:,}")
         if ageb.female_population:
@@ -266,7 +303,7 @@ class ExportService:
         # --- Variables de Entorno Ampliadas ---
         ext = ageb.extended_indicators
         if ext:
-            _section(pdf, "Variables de Entorno Ampliadas")
+            _section(pdf, "3.1) Variables de Entorno Ampliadas")
             _sub(pdf, "Indicadores Socioeconómicos")
             if ext.get("unemployment_rate") is not None:
                 _row(pdf, "Tasa de desempleo", f"{ext['unemployment_rate']:.1f}%")
@@ -310,7 +347,7 @@ class ExportService:
 
         # --- Perfil de Mercado Objetivo ---
         if result.target_profile:
-            _section(pdf, "Perfil de Mercado Objetivo")
+            _section(pdf, "4) Perfil de Mercado Objetivo")
             pdf.set_font(_F, "I", 10)
             pdf.set_text_color(100, 100, 100)
             pdf.multi_cell(0, 5, _clean_text(result.target_profile))
@@ -332,7 +369,7 @@ class ExportService:
 
         # --- Análisis de Competidores — Puntos de Valor ---
         if result.competitor_value_points:
-            _section(pdf, "Análisis de Competidores — Puntos de Valor")
+            _section(pdf, "5) Inteligencia Competitiva — Puntos de Valor")
             _sub(pdf, "Lo que valoran los clientes")
             for vp in result.competitor_value_points:
                 if pdf.get_y() > 260:
@@ -381,53 +418,24 @@ class ExportService:
                 pdf.ln(2)
             pdf.ln(4)
 
-        # --- Factores de viabilidad ---
-        _section(pdf, "Desglose de Factores de Viabilidad")
-        _factor_labels = {
-            "competencia": "Competencia",
-            "complementarios": "Complementarios",
-            "demografico": "Demográfico",
-            "socioeconomico": "Socioeconómico",
-        }
-        for factor, val in result.viability.factor_scores.items():
-            label = _factor_labels.get(factor, factor.replace("_", " ").capitalize())
-            _row(pdf, label, f"{val:.1f} / 100")
-        _row(pdf, "Completitud de datos", f"{result.viability.data_completeness * 100:.0f}%")
-        pdf.ln(4)
-
-        # --- Recomendación ---
-        _section(pdf, "Recomendación")
-        pdf.set_font(_F, "", 10)
-        pdf.set_text_color(60, 60, 60)
-        pdf.multi_cell(0, 5.5, recommendation)
-        pdf.ln(4)
-
-        # --- Recomendaciones Estratégicas ---
-        if result.strategic_recommendations:
-            _section(pdf, "Recomendaciones Estratégicas")
-            for idx, rec in enumerate(result.strategic_recommendations, 1):
-                if pdf.get_y() > 260:
-                    pdf.add_page()
-                pdf.set_font(_F, "B", 10)
-                pdf.set_text_color(44, 62, 80)
-                pdf.cell(8, 6, f"{idx}.")
-                pdf.set_font(_F, "", 10)
-                pdf.set_text_color(60, 60, 60)
-                pdf.multi_cell(0, 5.5, _clean_text(rec))
-                pdf.ln(2)
-            pdf.ln(4)
 
         # --- Gráficas de análisis de competidores ---
         competitors = [b for b in result.businesses if b.classification == "competitor"]
         if competitors:
-            from app.services.chart_generator import generate_ratings_chart, generate_price_chart, extract_top_complaints, generate_schedule_opportunity_chart, extract_schedule_data
+            from app.services.chart_generator import (
+                extract_schedule_data,
+                extract_top_complaints,
+                generate_price_chart,
+                generate_ratings_chart,
+                generate_schedule_opportunity_chart,
+            )
 
             # Schedule opportunity chart
             schedule_png = generate_schedule_opportunity_chart(competitors)
             if schedule_png:
                 if pdf.get_y() > 140:
                     pdf.add_page()
-                _section(pdf, "Análisis de Horarios de Competidores")
+                _section(pdf, "5.1) Análisis de Horarios de Competidores")
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                         tmp.write(schedule_png)
@@ -496,7 +504,7 @@ class ExportService:
             if ratings_png:
                 if pdf.get_y() > 140:
                     pdf.add_page()
-                _section(pdf, "Análisis de Ratings de Competidores")
+                _section(pdf, "5.2) Análisis de Ratings de Competidores")
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                         tmp.write(ratings_png)
@@ -513,7 +521,7 @@ class ExportService:
             if price_png:
                 if pdf.get_y() > 160:
                     pdf.add_page()
-                _section(pdf, "Distribución de Precios de Competidores")
+                _section(pdf, "5.3) Distribución de Precios de Competidores")
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                         tmp.write(price_png)
@@ -530,7 +538,7 @@ class ExportService:
             if complaints:
                 if pdf.get_y() > 200:
                     pdf.add_page()
-                _section(pdf, "Top 5 Quejas Más Comunes de Competidores")
+                _section(pdf, "5.4) Top 5 Quejas Más Comunes de Competidores")
                 for idx, complaint in enumerate(complaints, 1):
                     if pdf.get_y() > 260:
                         pdf.add_page()
@@ -552,7 +560,7 @@ class ExportService:
 
                 if pdf.get_y() > 140:
                     pdf.add_page()
-                _section(pdf, "Análisis de Tráfico Peatonal")
+                _section(pdf, "6) Tráfico Peatonal de Competidores (BestTime)")
 
                 # Chart
                 traffic_png = generate_foot_traffic_chart(ztp)
@@ -569,14 +577,34 @@ class ExportService:
                     pdf.ln(4)
 
                 # Summary
-                days_es = {'Monday':'Lunes','Tuesday':'Martes','Wednesday':'Miércoles','Thursday':'Jueves','Friday':'Viernes','Saturday':'Sábado','Sunday':'Domingo'}
-                busiest = days_es.get(ztp.get('busiest_day',''), ztp.get('busiest_day',''))
-                quietest = days_es.get(ztp.get('quietest_day',''), ztp.get('quietest_day',''))
+                busiest = _DAY_NAMES_ES.get(ztp.get('busiest_day', ''), ztp.get('busiest_day', ''))
+                quietest = _DAY_NAMES_ES.get(ztp.get('quietest_day', ''), ztp.get('quietest_day', ''))
                 _row(pdf, "Día más concurrido", busiest)
                 _row(pdf, "Día más tranquilo", quietest)
                 _row(pdf, "Permanencia promedio", f"{ztp.get('avg_dwell_time_minutes', 0):.0f} minutos")
                 _row(pdf, "Competidores con datos", f"{ztp.get('venues_with_data', 0)} de {ztp.get('venues_total', 0)}")
                 pdf.ln(2)
+
+                source_venues = ztp.get("source_venues", [])
+                if source_venues:
+                    _sub(pdf, "Comercios incluidos en BestTime")
+                    for idx, venue in enumerate(source_venues, 1):
+                        if pdf.get_y() > 260:
+                            pdf.add_page()
+                        venue_name = _clean_text(venue.get("venue_name", "") or "Comercio sin nombre")
+                        venue_category = _clean_text(venue.get("venue_category", "") or "Categoría no disponible")
+                        opening_hours = venue.get("opening_hours_by_day", {}) or {}
+                        opening_summary = _clean_text(_format_opening_hours_summary(opening_hours))
+
+                        pdf.set_font(_F, "B", 9)
+                        pdf.set_text_color(44, 62, 80)
+                        pdf.cell(0, 5, f"{idx}. {venue_name}", new_x="LMARGIN", new_y="NEXT")
+                        pdf.set_font(_F, "", 8)
+                        pdf.set_text_color(100, 100, 100)
+                        pdf.multi_cell(0, 4, f"Categoría: {venue_category}")
+                        pdf.multi_cell(0, 4, f"Horario reportado: {opening_summary}")
+                        pdf.ln(1)
+                    pdf.ln(2)
 
                 # Peak/quiet hours table
                 peak_by_day = ztp.get('peak_hours_by_day', {})
@@ -591,8 +619,8 @@ class ExportService:
                     pdf.ln()
                     pdf.set_font(_F, "", 8)
                     pdf.set_text_color(60, 60, 60)
-                    for day_en in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']:
-                        day_es = days_es.get(day_en, day_en)
+                    for day_en in _DAY_ORDER:
+                        day_es = _DAY_NAMES_ES.get(day_en, day_en)
                         peaks = peak_by_day.get(day_en, [])
                         quiets = quiet_by_day.get(day_en, [])
                         peak_str = ", ".join(f"{h}:00" for h in peaks[:3]) if peaks else "—"
@@ -618,7 +646,7 @@ class ExportService:
         if map_image_bytes:
             if pdf.get_y() > 160:
                 pdf.add_page()
-            _section(pdf, "Mapa de la Zona")
+            _section(pdf, "7) Evidencia Geográfica — Mapa de la Zona")
             try:
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     tmp.write(map_image_bytes)
@@ -628,6 +656,39 @@ class ExportService:
                 os.unlink(tmp_path)
             except Exception as e:
                 logger.warning("Could not embed map image: %s", e)
+
+        # --- Anexo: detalle de negocios ---
+        if result.businesses:
+            if pdf.get_y() > 220:
+                pdf.add_page()
+            _section(pdf, "Anexo — Detalle de Negocios Encontrados")
+            groups = [
+                ("Competidores", [b for b in result.businesses if b.classification == "competitor"]),
+                ("Complementarios", [b for b in result.businesses if b.classification == "complementary"]),
+                ("Sin clasificar", [b for b in result.businesses if b.classification == "unclassified"]),
+            ]
+            for group_label, biz_list in groups:
+                if not biz_list:
+                    continue
+                _sub(pdf, f"{group_label} ({len(biz_list)})")
+                for b in biz_list:
+                    if pdf.get_y() > 260:
+                        pdf.add_page()
+                    pdf.set_font(_F, "B", 9)
+                    pdf.set_text_color(44, 62, 80)
+                    pdf.cell(0, 5, b.name, new_x="LMARGIN", new_y="NEXT")
+                    pdf.set_font(_F, "", 8)
+                    pdf.set_text_color(100, 100, 100)
+                    details = b.category
+                    if b.google_rating is not None:
+                        details += f"  |  Rating: {b.google_rating:.1f}"
+                    if b.google_reviews_count is not None:
+                        details += f"  |  {b.google_reviews_count} reseñas"
+                    if b.denue_employee_stratum:
+                        details += f"  |  Personal: {b.denue_employee_stratum}"
+                    pdf.cell(0, 4, details, new_x="LMARGIN", new_y="NEXT")
+                    pdf.ln(2)
+            pdf.ln(2)
 
         # --- Pie de página ---
         pdf.ln(8)

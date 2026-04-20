@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import math
-import uuid
-from typing import Sequence
 
 from fuzzywuzzy import fuzz
 

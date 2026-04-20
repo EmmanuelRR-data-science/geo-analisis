@@ -205,6 +205,8 @@ class FootTrafficForecast(BaseModel):
     """Pronóstico de tráfico peatonal para un establecimiento."""
     venue_id: str
     venue_name: str
+    venue_category: str | None = None
+    opening_hours_by_day: dict[str, str] = {}
     day_raw: dict[str, list[int]]  # {"Monday": [24 values 0-100], ...}
     peak_hours: list[dict] = []
     quiet_hours: list[dict] = []
@@ -224,6 +226,7 @@ class ZoneTrafficProfile(BaseModel):
     avg_dwell_time_minutes: float
     venues_with_data: int
     venues_total: int
+    source_venues: list[dict] = []
 
 
 class AnalysisResult(BaseModel):

@@ -154,16 +154,36 @@ var GOOGLE_CATEGORIES = [
   { value: "chiropractor", label: "Quiropráctico", group: "Salud" },
   { value: "dental_clinic", label: "Clínica dental", group: "Salud" },
   { value: "dentist", label: "Dentista", group: "Salud" },
-  { value: "doctor", label: "Consultorio médico", group: "Salud" },
+  {
+    value: "doctor",
+    label: "Consultorio médico",
+    group: "Salud",
+    aliases: ["medico", "médico", "pediatra", "pediatras", "oculista", "oculistas", "oftalmologo", "oftalmólogo", "especialista", "especialidad"]
+  },
   { value: "drugstore", label: "Droguería", group: "Salud" },
+  { value: "general_hospital", label: "Hospital general", group: "Salud" },
   { value: "hospital", label: "Hospital", group: "Salud" },
   { value: "massage", label: "Masajes", group: "Salud" },
+  { value: "massage_spa", label: "Spa de masajes", group: "Salud" },
+  {
+    value: "medical_center",
+    label: "Centro médico",
+    group: "Salud",
+    aliases: ["centro de salud"]
+  },
+  {
+    value: "medical_clinic",
+    label: "Clínica médica",
+    group: "Salud",
+    aliases: ["clinica", "clínica", "especialidades medicas", "especialidades médicas"]
+  },
   { value: "medical_lab", label: "Laboratorio médico", group: "Salud" },
   { value: "pharmacy", label: "Farmacia", group: "Salud" },
   { value: "physiotherapist", label: "Fisioterapeuta", group: "Salud" },
   { value: "sauna", label: "Sauna", group: "Salud" },
   { value: "skin_care_clinic", label: "Clínica de cuidado de piel", group: "Salud" },
   { value: "spa", label: "Spa", group: "Salud" },
+  { value: "tanning_studio", label: "Estudio de bronceado", group: "Salud" },
   { value: "wellness_center", label: "Centro de bienestar", group: "Salud" },
   { value: "yoga_studio", label: "Estudio de yoga", group: "Salud" },
 
@@ -344,6 +364,14 @@ function renderWarnings(warnings) {
 function formatNumber(n) {
   if (n == null) return '—';
   return n.toLocaleString('es-MX');
+}
+
+function normalizeText(text) {
+  return (text || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }
 
 
@@ -577,7 +605,7 @@ function setupGoogleCategoryAutocomplete(inputId, dropdownId, filterType) {
   if (!input || !dropdown) return;
 
   input.addEventListener('input', function() {
-    var q = input.value.trim().toLowerCase();
+    var q = normalizeText(input.value.trim());
     if (q.length < 1) { dropdown.classList.add('hidden'); return; }
 
     var ownCats = filterType === 'googleAlly' ? appState.googleAllyCategories : appState.googleCompetitorCategories;
@@ -585,7 +613,13 @@ function setupGoogleCategoryAutocomplete(inputId, dropdownId, filterType) {
 
     var matches = GOOGLE_CATEGORIES.filter(function(cat) {
       if (ownCats.indexOf(cat.value) !== -1 || otherCats.indexOf(cat.value) !== -1) return false;
-      return cat.label.toLowerCase().indexOf(q) !== -1 || cat.value.toLowerCase().indexOf(q) !== -1 || cat.group.toLowerCase().indexOf(q) !== -1;
+      var aliases = (cat.aliases || []).map(normalizeText);
+      var haystack = [
+        normalizeText(cat.label),
+        normalizeText(cat.value),
+        normalizeText(cat.group)
+      ].concat(aliases);
+      return haystack.some(function(entry) { return entry.indexOf(q) !== -1; });
     }).slice(0, 15);
 
     if (matches.length === 0) { dropdown.classList.add('hidden'); return; }

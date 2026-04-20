@@ -1,6 +1,7 @@
 """Database connection module for PostgreSQL."""
 
 import os
+
 from sqlalchemy import create_engine
 
 _engine = None

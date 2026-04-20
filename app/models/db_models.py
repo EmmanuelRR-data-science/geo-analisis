@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Float, Index, Integer, JSON, String
+from geoalchemy2 import Geometry
+from sqlalchemy import JSON, Column, DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
-from geoalchemy2 import Geometry
 
 
 class Base(DeclarativeBase):

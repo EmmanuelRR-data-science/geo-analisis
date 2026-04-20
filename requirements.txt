@@ -6,9 +6,6 @@ pandas
 openpyxl
 fpdf2
 python-dotenv
-hypothesis
-pytest
-pytest-asyncio
 fuzzywuzzy
 python-Levenshtein
 sqlalchemy

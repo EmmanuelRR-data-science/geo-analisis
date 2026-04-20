@@ -7,6 +7,7 @@ no está disponible.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -26,7 +27,6 @@ from app.models.schemas import (
     TargetCriteria,
     TargetCustomerInsight,
     ValuePoint,
-    ViabilityResult,
 )
 from app.services.scian_catalog import (
     AFFINITY_RULES,
@@ -44,9 +44,6 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_MODEL_FAST = "llama-3.1-8b-instant"  # Faster model with higher rate limits for classification
 GROQ_TIMEOUT = 30.0
 GROQ_MAX_RETRIES = 4
-
-
-import asyncio
 
 class LLMService:
     """Servicio de comunicación con Groq API para análisis de negocios."""
@@ -112,7 +109,7 @@ class LLMService:
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
             # Remove first and last lines (``` markers)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             cleaned = "\n".join(lines)
 
         try:
@@ -779,7 +776,7 @@ class LLMService:
                 cleaned = response_text.strip()
                 if cleaned.startswith("```"):
                     lines = cleaned.split("\n")
-                    lines = [l for l in lines if not l.strip().startswith("```")]
+                    lines = [line for line in lines if not line.strip().startswith("```")]
                     cleaned = "\n".join(lines)
                 parsed = json.loads(cleaned)
                 if isinstance(parsed, list):
@@ -817,8 +814,8 @@ class LLMService:
         if not competitors:
             # Pioneer opportunity recommendations
             recs.append(
-                f"Oportunidad de mercado pionero: no se identificaron competidores directos en la zona. "
-                f"Esto representa una ventaja de primer movimiento para captar la demanda existente."
+                "Oportunidad de mercado pionero: no se identificaron competidores directos en la zona. "
+                "Esto representa una ventaja de primer movimiento para captar la demanda existente."
             )
             if ageb.total_population > 0:
                 recs.append(
@@ -1124,9 +1121,9 @@ class LLMService:
             return CompetitorReviewAnalysis(insufficient_data=True)
 
         prompt = (
-            f"Analiza las reseñas de competidores para un negocio de tipo similar.\n\n"
-            f"RESEÑAS POSITIVAS (4-5★):\n" + "\n".join(positive_reviews[:15]) + "\n\n"
-            f"RESEÑAS NEGATIVAS (1-2★):\n" + "\n".join(negative_reviews[:10]) + "\n\n"
+            "Analiza las reseñas de competidores para un negocio de tipo similar.\n\n"
+            "RESEÑAS POSITIVAS (4-5★):\n" + "\n".join(positive_reviews[:15]) + "\n\n"
+            "RESEÑAS NEGATIVAS (1-2★):\n" + "\n".join(negative_reviews[:10]) + "\n\n"
         )
 
         if target_profile and target_criteria:

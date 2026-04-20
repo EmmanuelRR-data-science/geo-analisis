@@ -1,10 +1,11 @@
 """Foot traffic service — orchestrates BestTime data and builds zone profiles."""
 
 from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING
 
-from app.clients.besttime_client import BestTimeClient, DAYS
+from app.clients.besttime_client import DAYS, BestTimeClient
 from app.models.schemas import FootTrafficForecast, ZoneTrafficProfile
 
 if TYPE_CHECKING:
@@ -47,7 +48,13 @@ class FootTrafficService:
 
         # Fetch forecasts
         forecasts_raw = await self._client.get_forecasts_batch(venues)
-        forecasts = [f for f in forecasts_raw if f is not None]
+        forecasts = []
+        for idx, forecast in enumerate(forecasts_raw):
+            if forecast is None:
+                continue
+            if not forecast.venue_category and idx < len(selected):
+                forecast.venue_category = selected[idx].category
+            forecasts.append(forecast)
 
         if not forecasts:
             warnings.append("No se pudieron obtener datos de tráfico peatonal. El análisis continúa sin esta información.")
@@ -108,6 +115,16 @@ class FootTrafficService:
         dwell_times = [f.dwell_time_avg for f in forecasts if f.dwell_time_avg > 0]
         avg_dwell = round(sum(dwell_times) / len(dwell_times), 1) if dwell_times else 0.0
 
+        source_venues = []
+        for f in forecasts:
+            source_venues.append(
+                {
+                    "venue_name": f.venue_name,
+                    "venue_category": f.venue_category,
+                    "opening_hours_by_day": f.opening_hours_by_day or {},
+                }
+            )
+
         return ZoneTrafficProfile(
             hourly_matrix=hourly_matrix,
             peak_hours_by_day=peak_hours_by_day,
@@ -117,6 +134,7 @@ class FootTrafficService:
             avg_dwell_time_minutes=avg_dwell,
             venues_with_data=len(forecasts),
             venues_total=total_competitors,
+            source_venues=source_venues,
         )
 
     @staticmethod

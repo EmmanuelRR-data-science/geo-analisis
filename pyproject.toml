@@ -1,0 +1,52 @@
+[project]
+name = "geoanalisis-sdd"
+version = "0.1.0"
+description = "Mapa de Viabilidad de Negocios para CDMX"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic",
+  "httpx",
+  "pandas",
+  "openpyxl",
+  "fpdf2",
+  "python-dotenv",
+  "fuzzywuzzy",
+  "python-levenshtein",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "geoalchemy2",
+  "matplotlib",
+]
+
+[dependency-groups]
+dev = [
+  "ruff",
+  "pytest",
+  "pytest-asyncio",
+  "hypothesis",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"

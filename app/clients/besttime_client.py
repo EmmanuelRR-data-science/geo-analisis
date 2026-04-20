@@ -1,6 +1,7 @@
 """BestTime.app API client for foot traffic forecasts."""
 
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -19,6 +20,60 @@ _MAX_RETRIES = 1
 _CACHE_DAYS = 14
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+def _normalize_category(raw_category: str | None, raw_categories: list | None) -> str | None:
+    """Normalize BestTime category labels for presentation."""
+    if raw_category:
+        return str(raw_category).replace("_", " ").title()
+    if raw_categories and isinstance(raw_categories, list):
+        first = next((c for c in raw_categories if c), None)
+        if first:
+            return str(first).replace("_", " ").title()
+    return None
+
+
+def _parse_hour(value) -> int | None:
+    """Parse an hour value returned by BestTime into 0-23 range."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized or normalized in {"closed", "cerrado", "none", "null"}:
+            return None
+    try:
+        return int(float(value)) % 24
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_opening_range(open_hour, close_hour) -> str | None:
+    """Format BestTime opening/closing hours into HH:00 range."""
+    open_parsed = _parse_hour(open_hour)
+    close_parsed = _parse_hour(close_hour)
+
+    if open_parsed is None and close_parsed is None:
+        return "Cerrado"
+    if open_parsed is None or close_parsed is None:
+        return None
+    if open_parsed == close_parsed:
+        return "24 horas"
+    return f"{open_parsed:02d}:00–{close_parsed:02d}:00"
+
+
+def _extract_opening_hours_by_day(analysis: list[dict]) -> dict[str, str]:
+    """Extract opening-hour ranges by day from BestTime analysis payload."""
+    opening_hours: dict[str, str] = {}
+    for day_data in analysis:
+        day_info = day_data.get("day_info", {})
+        day_text = day_info.get("day_text", "")
+        if day_text:
+            day_text = day_text.capitalize()
+        if day_text not in DAYS:
+            continue
+        formatted_range = _format_opening_range(day_info.get("venue_open"), day_info.get("venue_closed"))
+        if formatted_range:
+            opening_hours[day_text] = formatted_range
+    return opening_hours
 
 
 class BestTimeClient:
@@ -100,6 +155,11 @@ class BestTimeClient:
         try:
             venue_info = data.get("venue_info", {})
             analysis = data.get("analysis", [])
+            opening_hours_by_day = _extract_opening_hours_by_day(analysis)
+            venue_category = _normalize_category(
+                venue_info.get("venue_type"),
+                venue_info.get("venue_types"),
+            )
 
             day_raw = {}
             peak_hours = []
@@ -144,6 +204,8 @@ class BestTimeClient:
             return FootTrafficForecast(
                 venue_id=venue_info.get("venue_id", ""),
                 venue_name=venue_info.get("venue_name", ""),
+                venue_category=venue_category,
+                opening_hours_by_day=opening_hours_by_day,
                 day_raw=day_raw,
                 peak_hours=peak_hours,
                 quiet_hours=quiet_hours,
@@ -159,8 +221,9 @@ class BestTimeClient:
     def _get_from_cache(self, venue_name: str, venue_address: str) -> FootTrafficForecast | None:
         """Check PostgreSQL cache for valid forecast."""
         try:
-            from app.db import get_engine
             from sqlalchemy import text
+
+            from app.db import get_engine
             engine = get_engine()
             with engine.connect() as conn:
                 row = conn.execute(
@@ -182,8 +245,9 @@ class BestTimeClient:
     def _save_to_cache(self, forecast: FootTrafficForecast, venue_address: str, raw_data: dict) -> None:
         """Save forecast to PostgreSQL cache."""
         try:
-            from app.db import get_engine
             from sqlalchemy import text
+
+            from app.db import get_engine
             engine = get_engine()
             now = datetime.now(timezone.utc)
             expires = now + timedelta(days=_CACHE_DAYS)

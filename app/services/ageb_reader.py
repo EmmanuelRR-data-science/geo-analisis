@@ -1,8 +1,11 @@
 """AGEBReader — queries demographic data from PostgreSQL."""
 
 from __future__ import annotations
+
 import logging
+
 from sqlalchemy import text
+
 from app.models.schemas import AGEBData
 
 logger = logging.getLogger(__name__)

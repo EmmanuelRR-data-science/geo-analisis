@@ -1,7 +1,9 @@
 """Zone validation and catalog service for CDMX colonias."""
 
 from __future__ import annotations
+
 from fuzzywuzzy import fuzz, process
+
 from app.models.schemas import BoundingBox, Zone
 
 _ZONE_CATALOG: list[dict] = [

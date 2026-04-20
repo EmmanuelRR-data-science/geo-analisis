@@ -1,28 +1,32 @@
 """FastAPI application — Mapa de Viabilidad de Negocios."""
 
 from __future__ import annotations
+
+import asyncio
+import base64
 import logging
 import os
+import re
+import unicodedata
 import uuid
-import base64
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.models.schemas import AnalysisResult, APIError, MultiRadiusResult
+from app.models.schemas import AnalysisResult, MultiRadiusResult
 from app.services.ageb_reader import AGEBReader
-from app.services.data_service import DataService
-from app.services.llm_service import LLMService
-from app.services.zone_service import ZoneService
-from app.services.export_service import ExportService
 from app.services.analysis_engine import AnalysisEngine
+from app.services.data_service import DataService
 from app.services.environment_calculator import EnvironmentCalculator
-from app.services.target_market_service import TargetMarketService
+from app.services.export_service import ExportService
 from app.services.foot_traffic_service import FootTrafficService
+from app.services.llm_service import LLMService
+from app.services.target_market_service import TargetMarketService
+from app.services.zone_service import ZoneService
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,7 @@ async def root():
 async def health():
     try:
         from sqlalchemy import text
+
         from app.db import get_engine
         engine = get_engine()
         with engine.connect() as conn:
@@ -139,7 +144,8 @@ async def analyze(request: Request):
 
     if zone is None and clat is not None and clng is not None:
         # Create virtual zone from coordinates
-        from app.models.schemas import BoundingBox, Zone as ZoneModel
+        from app.models.schemas import BoundingBox
+        from app.models.schemas import Zone as ZoneModel
         offset = radius_km * 0.009  # approx degrees per km
         zone = ZoneModel(
             name="Coordenadas personalizadas",
@@ -179,12 +185,11 @@ async def analyze(request: Request):
                 "Los resultados pueden no ser precisos."
             )
 
-    import asyncio
 
     # Step 1: Run interpretation AND business search in PARALLEL
     interpret_task = asyncio.create_task(llm_service.interpret_business_type(biz_input))
     # For Google search we need a keyword — use the raw input while LLM interprets
-    from app.models.schemas import BusinessInterpretation, SCIANCategory
+    from app.models.schemas import BusinessInterpretation
     temp_interp = BusinessInterpretation(
         original_input=biz_input, scian_code="", scian_description=biz_input,
         complementary_categories=[], competitor_categories=[], used_fallback=True
@@ -381,7 +386,6 @@ async def export_html(request: Request):
 
     try:
         html = ExportService.generate_standalone_html(res, radius_km=radius_km)
-        import unicodedata, re
         nfkd = unicodedata.normalize("NFKD", res.zone.name)
         slug = "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
         slug = re.sub(r"[^a-z0-9]+", "-", slug).strip("-")

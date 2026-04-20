@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from app.models.schemas import SCIANCategory
 
-
 # Catálogo SCIAN: código -> descripción
 SCIAN_CATALOG: dict[str, str] = {
     "461110": "Comercio al por menor de abarrotes y alimentos",
